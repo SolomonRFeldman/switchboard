@@ -405,7 +405,7 @@ pub async fn issues(identifiers: &[String], source: &str) -> Result<Vec<Value>> 
     Ok(found)
 }
 
-/// Linear's issue search, its first `limit`.
+/// Linear's issue search, its first `limit`, each with its description.
 pub async fn search(term: &str, limit: usize, source: &str) -> Result<Vec<Value>> {
     let data = graphql(
         &format!(

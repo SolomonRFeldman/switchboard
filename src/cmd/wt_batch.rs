@@ -48,7 +48,7 @@ pub fn tickets_of(args: &[String]) -> Result<Vec<String>, String> {
         .filter(|t| !t.is_empty())
     {
         let ticket = worktree::ticket_from(token)
-            .ok_or_else(|| format!("could not parse a Linear ticket identifier from \"{token}\""))?
+            .ok_or_else(|| format!("could not parse a ticket identifier from \"{token}\""))?
             .to_uppercase();
         if !tickets.contains(&ticket) {
             tickets.push(ticket);
@@ -109,7 +109,7 @@ mod tests {
         );
         assert_eq!(
             tickets_of(&args(&["ABC-1", "$(rm -rf ~)"])),
-            Err("could not parse a Linear ticket identifier from \"$(rm\"".into())
+            Err("could not parse a ticket identifier from \"$(rm\"".into())
         );
     }
 }

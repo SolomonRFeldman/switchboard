@@ -41,9 +41,6 @@ const DROP: &[&str] = &[
     "button", "template",
 ];
 
-static LINEAR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^https://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-[0-9]+)").unwrap()
-});
 static SLACK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https://[^/]*slack\.com/").unwrap());
 static PULL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/pull/([0-9]+)").unwrap()
@@ -71,8 +68,16 @@ pub enum Kind {
 
 /// What a link is, or why it can't be read here.
 pub fn kind_of(url: &str, notes: &Path) -> Result<Kind, String> {
-    if let Some(c) = LINEAR.captures(url) {
-        return Ok(Kind::Ticket(c[1].to_ascii_uppercase()));
+    kind_with(url, notes, crate::integrations::tracker::own_link(url))
+}
+
+// `kind_of`, given the ticket the link is in the tracker set, if any.
+fn kind_with(url: &str, notes: &Path, ticket: Option<String>) -> Result<Kind, String> {
+    // A ticket's page in the tracker set (Linear's, or one on the Jira
+    // site); the other tracker's link is read as a page, never as the set
+    // one's ticket of the same identifier.
+    if let Some(id) = ticket {
+        return Ok(Kind::Ticket(id));
     }
     if SLACK.is_match(url) {
         return Ok(Kind::Slack);
@@ -402,8 +407,10 @@ mod tests {
     #[test]
     fn links_are_told_apart() {
         let notes = std::env::temp_dir();
+        // Which links are the tracker's tickets is tracker::own_link_of's,
+        // tested there; here only that one is read as a ticket.
         assert_eq!(
-            kind_of("https://linear.app/team/issue/abc-12/title", &notes),
+            kind_with("https://x.test/a", &notes, Some("ABC-12".into())),
             Ok(Kind::Ticket("ABC-12".into()))
         );
         assert_eq!(

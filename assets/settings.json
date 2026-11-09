@@ -10,11 +10,15 @@
     "key": "tracker",
     "category": "Integrations",
     "label": "Ticket tracker",
-    "description": "Where tickets come from, for ticket commands in M-p, ticket titles in tab names, the Tickets view and tickets in M-j's picker: Linear, or off, when the workspace asks no tracker anything by itself (programs you run, such as wt and worktree-done, still ask Linear)",
+    "description": "Where tickets come from, for ticket commands in M-p, ticket titles in tab names, the Tickets view and tickets in M-j's picker: Linear, Jira (Cloud), or off, when the workspace asks no tracker anything by itself (programs you run, such as wt and worktree-done, still ask Linear)",
     "choices": [
       {
         "value": "linear",
         "label": "Linear"
+      },
+      {
+        "value": "jira",
+        "label": "Jira"
       },
       {
         "value": "off",
@@ -276,7 +280,7 @@
     "key": "search_everything",
     "category": "Integrations",
     "label": "Search everything",
-    "description": "M-S-f opens a box that searches, with a chip to turn each source on or off, and lists the open tabs that name or show it and what your notes, Linear, GitHub and Slack hold for it, each read beside the pane with Enter, a tab gone to",
+    "description": "M-S-f opens a box that searches, with a chip to turn each source on or off, and lists the open tabs that name or show it and what your notes, the ticket tracker, GitHub and Slack hold for it, each read beside the pane with Enter, a tab gone to",
     "default": true
   },
   {
@@ -381,14 +385,14 @@
     "key": "pause_when_away",
     "category": "Mission control",
     "label": "Pause lookups while away",
-    "description": "Stop asking GitHub, Linear and the calendar for mission control's views, and telling the diff's stories ahead, while no terminal is attached, or the computer has been locked, or idle 10 minutes, with no key pressed in Switchboard since (from another computer over SSH too), and catch up on return",
+    "description": "Stop asking GitHub, the ticket tracker and the calendar for mission control's views, and telling the diff's stories ahead, while no terminal is attached, or the computer has been locked, or idle 10 minutes, with no key pressed in Switchboard since (from another computer over SSH too), and catch up on return",
     "default": true
   },
   {
     "key": "poll_fast",
     "category": "Mission control",
     "label": "Look often",
-    "description": "Ask GitHub and Linear every 15 seconds (the PR board every 30) and look at the Slack Home tab every 10, in place of every one or two minutes: about eight times as many requests, which can reach GitHub's 5,000 an hour",
+    "description": "Ask GitHub and the ticket tracker every 15 seconds (the PR board every 30) and look at the Slack Home tab every 10, in place of every one or two minutes: about eight times as many requests, which can reach GitHub's 5,000 an hour",
     "default": false
   },
   {
@@ -574,14 +578,14 @@
     "key": "ticket_board",
     "category": "Mission control: Tickets",
     "label": "Ticket board",
-    "description": "Mission control's Tickets view, which asks Linear about the issues assigned to you every two minutes",
+    "description": "Mission control's Tickets view, which asks the ticket tracker about the tickets assigned to you every two minutes",
     "default": true
   },
   {
     "key": "view_inbox",
     "category": "Mission control: Inbox",
     "label": "Inbox",
-    "description": "Mission control's Inbox view and the sidebar's count of it: your unread Linear mentions, comments and assignments, asked of Linear every two minutes #linear",
+    "description": "Mission control's Inbox view and the sidebar's count of it: your unread Linear mentions, comments and assignments, asked of Linear every two minutes, with Linear as the ticket tracker",
     "default": true
   },
   {
@@ -602,7 +606,7 @@
     "key": "request_audit",
     "category": "Mission control: Usage",
     "label": "Requests in Usage",
-    "description": "The Usage view lists today's requests to services outside this computer (GitHub, Linear, Slack, Anthropic and the rest), by protocol and by service, as Switchboard counts them; off, it leaves them out",
+    "description": "The Usage view lists today's requests to services outside this computer (GitHub, Linear or Jira, Slack, Anthropic and the rest), by protocol and by service, as Switchboard counts them; off, it leaves them out",
     "default": true
   },
   {
@@ -994,7 +998,7 @@
     "key": "tab_lookups",
     "category": "Tabs and status bar",
     "label": "PRs and tickets in tab names",
-    "description": "Look up each tab's PR number on GitHub and its ticket's title on Linear, in the background",
+    "description": "Look up each tab's PR number on GitHub and its ticket's title in the ticket tracker, in the background",
     "default": true
   },
   {

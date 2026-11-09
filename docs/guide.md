@@ -715,7 +715,7 @@ The first time a server of this version reads the routines, it makes four of its
 
 ### When a view isn't set up
 
-A view that is on is always there to go to, and before what it reads from is set up it says what is missing and how to set it up. GitHub's views need a token and Linear's a key: "GitHub and Linear access", under "Reading beside your work", says where each is looked for and how to store one, and mission control picks a stored one up within two minutes. A view whose tabs are in no GitHub repository says to open a tab in one. A look that fails for another reason (the network, a rate limit) keeps what the view had, with the error above it.
+A view that is on is always there to go to, and before what it reads from is set up it says what is missing and how to set it up. GitHub's views need a token and Linear's a key: "GitHub, Linear and Jira access", under "Reading beside your work", says where each is looked for and how to store one, and mission control picks a stored one up within two minutes. A view whose tabs are in no GitHub repository says to open a tab in one. A look that fails for another reason (the network, a rate limit) keeps what the view had, with the error above it.
 
 ### How often mission control looks
 
@@ -921,7 +921,7 @@ The wheel scrolls three lines at a time.
 
 `M-r` opens the branch's pull request in the browser. A branch with no PR yet opens its repository instead, and a box says why. `M-p`'s "Open the repository in the browser" opens the repository whatever the branch. When the PR or the repository can't be opened, a box says why: the directory isn't in a git repository, the repository has no `origin` remote or one that isn't on GitHub, there is no GitHub token or GitHub refused it, or GitHub doesn't have the repository or won't show it to your token.
 
-`M-l` opens the branch's Linear ticket, found as `M-i` finds it. With your workspace written in `linear.json` (below), the ticket's address is made from it at once; without, Linear is asked where the ticket is. A box says when there is no ticket in the branch or tab name, when Linear has no such ticket, or why Linear couldn't be asked.
+`M-l` opens the branch's ticket, found as `M-i` finds it. With Linear, and your workspace written in `linear.json` (below), the ticket's address is made from it at once; with Jira, from your site in `jira.json`; without either, the tracker is asked where the ticket is. A box says when there is no ticket in the branch or tab name, when the tracker has no such ticket, or why it couldn't be asked.
 
 With GitHub turned off in Settings (Integrations, `github`), `M-v`, `M-r`, `M-m` and "Open the repository in the browser" do nothing but show a tip saying so, the first time; with the ticket tracker off (`tracker`), `M-i` and `M-l` do the same.
 
@@ -947,9 +947,9 @@ The chips choose which sources are asked: one for each source Settings has on (T
 
 The chosen result is previewed beside the results (under them when the box is narrower than 100 columns; the box takes four fifths of the screen's width for it): where it was found on its first line (a note's title and the heading above the match, a tab and its pane or its conversation, a ticket, an issue or PR, a Slack channel and who wrote it), with the match's line number for a note, what it is under that, and then up to five lines before and five after the match, the match's line lit and the words you searched for in the accent. It follows the cursor as you move it, from what each source answered: a note's lines and a pane's from what was searched, a conversation's from its transcript, a ticket's, issue's or PR's from its description, and a Slack message's from the messages around it in Slack's answer. With the results focused, J and K scroll it, as the wheel over it does, and, with the preview beside the results, the pane resize keys and a drag of the line between the two move that line. Settings' "Preview the chosen search result" (`search_preview`, under Integrations) turns it off, leaving the box as it was.
 
-A source's name and a colon at the start of what you type does the same as its chip: `tab:`, `note:`, `linear:`, `gh:` (or `github:`) and `slack:`, in any case, one or more (`note: slack: deploy` searches notes and Slack for "deploy"). The prefix leaves the field as you type it and lights those chips alone, for this search only. A word before a colon that names no source (`fix:`) is searched for like the rest. `M-p`'s "Search the open tabs", "Search notes", "Search Linear", "Search GitHub" and "Search Slack" open the box with that source's prefix typed.
+A source's name and a colon at the start of what you type does the same as its chip: `tab:`, `note:`, `linear:` (or `jira:` or `tickets:`, the tracker set either way), `gh:` (or `github:`) and `slack:`, in any case, one or more (`note: slack: deploy` searches notes and Slack for "deploy"). The prefix leaves the field as you type it and lights those chips alone, for this search only. A word before a colon that names no source (`fix:`) is searched for like the rest. `M-p`'s "Search the open tabs", "Search notes", "Search Linear", "Search GitHub" and "Search Slack" open the box with that source's prefix typed.
 
-A source that fails shows a row saying why, which reads nothing when chosen. GitHub and Linear are left out while their settings are off, with no chip, even when a prefix names them. Settings' "Slack in search everything" (`search_slack`) leaves Slack out, and "Search everything" (`search_everything`), both under Integrations, turns the key off.
+A source that fails shows a row saying why, which reads nothing when chosen. GitHub and the ticket tracker are left out while their settings are off, with no chip, even when a prefix names them. Settings' "Slack in search everything" (`search_slack`) leaves Slack out, and "Search everything" (`search_everything`), both under Integrations, turns the key off.
 
 ### Reading a link
 
@@ -1003,12 +1003,13 @@ While a link opens, a box says where it is going ("Opening github.com in Chrome 
 
 `switchboard open-url <url>` opens a link the same way, for scripts and skills, and `switchboard open-url --as <site> <url>` in the profile `<site>` would get (as the AWS login opens AWS's pages in `awsapps.com`'s). Every pane's environment has `GH_BROWSER` set to `switchboard open-url`, so gh's `--web` (`gh pr view --web` and the rest) opens the same way from any pane; outside the workspace, set it yourself.
 
-### GitHub and Linear access
+### GitHub, Linear and Jira access
 
 Switchboard talks to GitHub and Linear over their own APIs. Each finds its credential where you already keep one:
 
 - **GitHub**: the token of GitHub's CLI, `gh auth token`, and nowhere else, so install [gh](https://cli.github.com) and sign in with `gh auth login`. Every GitHub request Switchboard makes, the update check's too, signs in as the account gh is signed in to, and shares its rate limit of 5,000 requests an hour; gh decides which token that is, its own `GH_TOKEN` included. The update check, which reads a public repository's releases, still looks without a token when gh has none, GitHub refuses gh's or says your account's limit is spent, or the `github` setting is off, from the 60 requests an hour GitHub allows every program behind the same address.
 - **Linear**: `LINEAR_API_KEY`, the stored secret `linear-api-key`, else `linearApiKey` in `~/.config/switchboard/linear.json`. Make a key in Linear under Settings, Security & access, Personal API keys.
+- **Jira** (Cloud), with Settings' "Ticket tracker" set to Jira: an API token and the email of the account that made it. The token is `JIRA_API_TOKEN`, the stored secret `jira-api-token`, else `jiraApiToken` in `~/.config/switchboard/jira.json`; the email `JIRA_EMAIL`, else `jiraEmail` there; the site `JIRA_SITE`, else `jiraSite` there (`https://<yours>.atlassian.net`). Make a token at https://id.atlassian.com/manage-profile/security/api-tokens, copy it, and store it with `pbpaste | switchboard platform secret-set jira-api-token`. Only the site's address is used, so a board's or ticket's address pasted in works, and it is always reached over https. Atlassian's tokens expire after at most a year; when Jira refuses one, M-i, the Tickets view and the rest say so rather than that a ticket is missing.
 
 A credential from `gh`, a secret or the file is kept for ten minutes and forgotten as soon as the service refuses it, so a new one is used on the next request. GitHub's is looked for once at a time, and a look that finds nothing (a `gh` signed out, or too slow on a busy computer) is made again only after a minute, the token found before still used meanwhile. To store a secret, run the command and paste it, then press `Ctrl-d`:
 
@@ -1025,6 +1026,14 @@ It reads the secret from its input, never from an argument, which other programs
 ```
 
 `linearWorkspace` is your workspace's name in its addresses (`linear.app/your-workspace`), which `M-l` makes the ticket's link from (`LINEAR_WORKSPACE` in the environment wins over it). `linearTeam` and `linearLabels` are the team key and the labels `/shape` and `/note-tickets` file new tickets with.
+
+`~/.config/switchboard/jira.json` holds the same for Jira, listed in Settings under "Jira (jira.json)":
+
+```json
+{ "jiraSite": "https://your-site.atlassian.net", "jiraEmail": "you@example.com", "jiraProject": "ABC", "jiraLabels": ["bug"] }
+```
+
+Jira answers the same questions as Linear, in the same words: a status's category is its state (To Do, In Progress, Done, and a Done resolved Won't Do, Duplicate, Declined or Cancelled is canceled), an epic is the ticket's project, its priorities run Highest to Lowest as Linear's Urgent to Low, its rich text is shown as Markdown, and closing a ticket from the Tickets view takes the workflow's first transition into Done that isn't a cancel. Jira has no inbox, so the Inbox view shows only with Linear. One tracker is set at a time: a card still on the Tickets board from the one set before can't be closed, worked on or shaped, and goes at the next look.
 
 ### Claude's connectors
 
@@ -2134,7 +2143,8 @@ Some files never leave the computer, read and written in `~/.config/switchboard`
 | `keys.json` | Keys bound to other actions, or unbound | "Changing the keys" |
 | `sidebar.json`, `sidebar-plugins/` | The sidebar's and mission control's sizes, and the plugins that load | "sidebar.json", "Plugins" |
 | `browser.json` | The Chrome profile each site's links open in, and the default one | "Where links open" |
-| `linear.json` | Your Linear workspace, and the team and labels `/shape` files tickets with | "GitHub and Linear access" |
+| `linear.json` | Your Linear workspace, and the team and labels `/shape` files tickets with | "GitHub, Linear and Jira access" |
+| `jira.json` | Your Jira site and email, and the project and labels `/shape` files tickets with | "GitHub, Linear and Jira access" |
 | `CLAUDE.md`, `claude.json` | Your own Claude rules, or where they come from: another file or a git repository | "Your CLAUDE.md" |
 | `slack-updates.json` | The Slack channels the Slack view shows in full | "The Slack view" |
 | `slack-relay.json` | Your Slack member ID, the one person the relay listens to | "The Slack app, and keeping it yours" |
@@ -2143,7 +2153,7 @@ Some files never leave the computer, read and written in `~/.config/switchboard`
 | `leak-check.txt` | Your organization's and company's names, usernames and internal hosts, one a line (blank lines and `#` lines left out), which `switchboard leak-check` finds, as whole words in any case, in what a landing would push to a public repository | "Landing: `/queue-and-clean`" |
 | `files.json` | The git repository your files are kept in (`repo`) and the folder in it that holds them (`dir`), read while Settings' "Your files from a git repository" is on; it stays on the computer | "Your files in a git repository" |
 | `trusted-dirs` | The directories whose own code may run, one a line: `switchboard try` builds a worktree holding someone else's commits only once it is listed, and `/queue-and-clean` offers to run a landed repository's install or migrate script only in one listed; a PR checked out untrusted stays untrusted when listed | "Trying a change" |
-| `secrets.json` | On Linux with no keyring, the secrets `switchboard platform secret-set` stores, readable only by you | "GitHub and Linear access" |
+| `secrets.json` | On Linux with no keyring, the secrets `switchboard platform secret-set` stores, readable only by you | "GitHub, Linear and Jira access" |
 
 What Switchboard keeps for itself is in `~/.local/state/switchboard/` (the socket, the saved layout, the tips shown, what it counted, the day's files) and its caches in `~/.cache/switchboard/` and `~/.cache/wt-revive/` (what each Claude transcript says of its worktree, for `wt-revive`); the Slack relay's state is in `~/.local/state/slack-relay/`, and `/oncall`'s in `~/.local/state/oncall/`. `~/.local/share/switchboard/` holds what setup writes for Claude Code: Switchboard's plugin (`claude/plugin/`, where earlier builds' `plugin/` is moved and left as a link to it for the tabs opened before, with `.switchboard-plugin` listing what was written, and what a skill installed for itself beside its scripts), Switchboard's part of your CLAUDE.md when that imports it (`switchboard.md`), the clone of your rules' repository (`claude-md/`) and the build whose parts were last put in place (`setup-build`). None of it is yours to edit, and any of it can be deleted while the server is stopped, at the cost of what it held.
 
@@ -2156,7 +2166,7 @@ Mission control's Settings view (`M-p`, then "Settings: turn the workspace's opt
 | Setting | Default | What it does |
 |---|---|---|
 | GitHub (`github`) | on | PR commands in M-p, the PRs view, PR numbers and merge states in tabs and Reopen's worktrees; off, the workspace asks GitHub nothing by itself (programs you run, such as codex-review and wtpr, still do) |
-| Ticket tracker (`tracker`) | Linear | Where tickets come from, for ticket commands in M-p, ticket titles in tab names, the Tickets view and tickets in M-j's picker: Linear, or off, when the workspace asks no tracker anything by itself (programs you run, such as wt and worktree-done, still ask Linear) |
+| Ticket tracker (`tracker`) | Linear | Where tickets come from, for ticket commands in M-p, ticket titles in tab names, the Tickets view and tickets in M-j's picker: Linear, Jira (Cloud), or off, when the workspace asks no tracker anything by itself (programs you run, such as wt and worktree-done, still ask Linear); one at a time. The Inbox view is Linear's alone |
 | Cache PR and ticket images (`image_cache`) | on | Keeps the pictures, stylesheet, scripts and drawn pages of the PR and ticket image views on this computer, up to 300 MB, so one opened again shows at once; off, everything is fetched and drawn each time, and the pictures are left out, since the page loads a picture only from a copy on this computer |
 | Docs in the link view (`link_view_docs`) | on | The link view reads a Notion page or a Google Doc or Slides deck through Claude's connectors, a headless Haiku fetching it; off, they are read as any other page, which a private one won't let it |
 | Chrome profiles (`chrome_profiles`) | on | Links Switchboard opens (mission control, the link view, M-r, M-l, switchboard open-url) open in the Chrome profile browser.json gives their site, else its default profile; off, every link opens in the default browser |
@@ -2165,7 +2175,7 @@ Mission control's Settings view (`M-p`, then "Settings: turn the workspace's opt
 | Today's todo note (`todo_note`) | off | Whether the Today's todo note starter routine is made running when this version first sets up the routines (it sends your notes' unticked items to Claude); after that, pause or resume it in the Routines view |
 | Todo note time (`todo_note_time`) | 9am | The hour the Today's todo note starter routine runs at each day, when this version first sets up the routines; after that, change its schedule in the Routines view |
 | Meeting notes (`meeting_notes`) | on | Whether the Meeting notes starter routine is made running when this version first sets up the routines (once Fathom has worked); after that, pause or resume it in the Routines view |
-| Search everything (`search_everything`) | on | M-S-f opens a box that searches, with a chip to turn each source on or off, and lists the open tabs that name or show it and what your notes, Linear, GitHub and Slack hold for it, each read beside the pane with Enter, a tab gone to |
+| Search everything (`search_everything`) | on | M-S-f opens a box that searches, with a chip to turn each source on or off, and lists the open tabs that name or show it and what your notes, the ticket tracker, GitHub and Slack hold for it, each read beside the pane with Enter, a tab gone to |
 | Arrow keys reach the search chips (`search_arrows`) | on | In M-S-f's box, Down goes from the field to the chips and on to the results, Up back the same way, and Left and Right move along the chips; off, Up and Down move through the results alone and Tab reaches the chips |
 | Preview the chosen search result (`search_preview`) | on | M-S-f's box is wider and shows the chosen result beside the results (under them in a narrow box): where it was found and the lines around the match, the match's line lit; J and K scroll it with the results focused; off, the box lists the results alone |
 | Slack in search everything (`search_slack`) | on | M-S-f searches Slack too, through Claude's connector, a headless Haiku making that one call, its results arriving a few seconds after the others |
@@ -2254,8 +2264,8 @@ What belongs to mission control as a whole, then a category for each view, its o
 | Show views as the list moves (`mission_nav_follow`) | on | With UX 2.0, moving the cursor through mission control's list of views with j, k or the arrows brings each view to the front as it lands on it, the list keeping the keys; Enter then moves into the view, a view joins back and forward's trail once the cursor rests on it a second, and the list is one Tab stop, Tab going into the view in front and Shift-Tab back. Off, j and k only move the cursor, Enter opens the view, and Tab stops on each view's row |
 | Highlight on hover (`hover_highlight`) | on | What a click would press lights under the mouse: in mission control the views' names, the filter, the cards and rows, a menu's options, Yes and No, an answer's options and easy mode's ×; the sidebar's tabs and notifications; the options of M-m's, the update box's and M-w's menus; and the buttons of Notes' toolbar, its boxes' × and M-d's diff. In Ghostty and kitty the mouse pointer also turns into a hand over what a click presses (the workspace's sidebar, header, status line, mission control and boxes) and a resizing arrow over a line between panes. Off, nothing follows the mouse and the pointer is never changed. Takes effect at once in mission control and the sidebar, and when a menu, Notes or the diff next opens |
 | Keep the tabs sidebar in mission control (`mission_keep_tabs_sidebar`) | off | With UX 2.0, mission control keeps the tabs sidebar and lists its groups and views in a column of its own beside it, the view to its right; off, while mission control is open the sidebar itself lists its groups and views, the tabs coming back as it closes |
-| Pause lookups while away (`pause_when_away`) | on | Stop asking GitHub, Linear and the calendar for mission control's views, and telling the diff's stories ahead, while no terminal is attached, or the computer has been locked, or idle 10 minutes, with no key pressed in Switchboard since (from another computer over SSH too), and catch up on return |
-| Look often (`poll_fast`) | off | Ask GitHub and Linear every 15 seconds (the PR board every 30) and look at the Slack Home tab every 10, in place of every one or two minutes: about eight times as many requests, which can reach GitHub's 5,000 an hour |
+| Pause lookups while away (`pause_when_away`) | on | Stop asking GitHub, the ticket tracker and the calendar for mission control's views, and telling the diff's stories ahead, while no terminal is attached, or the computer has been locked, or idle 10 minutes, with no key pressed in Switchboard since (from another computer over SSH too), and catch up on return |
+| Look often (`poll_fast`) | off | Ask GitHub and the ticket tracker every 15 seconds (the PR board every 30) and look at the Slack Home tab every 10, in place of every one or two minutes: about eight times as many requests, which can reach GitHub's 5,000 an hour |
 
 #### Mission control: Notifications
 
@@ -2339,13 +2349,13 @@ What belongs to mission control as a whole, then a category for each view, its o
 
 | Setting | Default | What it does |
 |---|---|---|
-| Ticket board (`ticket_board`) | on | Mission control's Tickets view, which asks Linear about the issues assigned to you every two minutes |
+| Ticket board (`ticket_board`) | on | Mission control's Tickets view, which asks the ticket tracker about the tickets assigned to you every two minutes |
 
 #### Mission control: Inbox
 
 | Setting | Default | What it does |
 |---|---|---|
-| Inbox (`view_inbox`) | on | Mission control's Inbox view and the sidebar's count of it: your unread Linear mentions, comments and assignments, asked of Linear every two minutes #linear |
+| Inbox (`view_inbox`) | on | Mission control's Inbox view and the sidebar's count of it: your unread Linear mentions, comments and assignments, asked of Linear every two minutes, with Linear as the ticket tracker |
 
 #### Mission control: Resources
 
@@ -2358,7 +2368,7 @@ What belongs to mission control as a whole, then a category for each view, its o
 | Setting | Default | What it does |
 |---|---|---|
 | Usage (`usage`) | on | Mission control's Usage view: today's Claude spend and how much of the rate limits is used |
-| Requests in Usage (`request_audit`) | on | The Usage view lists today's requests to services outside this computer (GitHub, Linear, Slack, Anthropic and the rest), by protocol and by service, as Switchboard counts them; off, it leaves them out |
+| Requests in Usage (`request_audit`) | on | The Usage view lists today's requests to services outside this computer (GitHub, Linear or Jira, Slack, Anthropic and the rest), by protocol and by service, as Switchboard counts them; off, it leaves them out |
 
 #### Mission control: Keys
 
@@ -2390,7 +2400,7 @@ With UX 2.0 on, this category is named "Tabs and header".
 | Messages in a box (`message_boxes`) | on | What a key or script has to say shows in a small box in the middle of the screen, which any key closes, rather than on the status line for a moment |
 | Opening-link message (`link_opening_message`) | on | Opening a link says where it is going (the site, Chrome and its profile) in a box until the browser comes to the front, since a profile's Chrome can take seconds to start. Off, links open with nothing said |
 | Second status line (`second_status`) | off | The line under the tabs with the tab's name, branch, PR and Claude session |
-| PRs and tickets in tab names (`tab_lookups`) | on | Look up each tab's PR number on GitHub and its ticket's title on Linear, in the background |
+| PRs and tickets in tab names (`tab_lookups`) | on | Look up each tab's PR number on GitHub and its ticket's title in the ticket tracker, in the background |
 | Project colors (`accent_colors`) | on | A color of its own for each project's tab, made from its directory; off, every tab is gray |
 | Tab colors (`tab_colors`) | soft | The colors tabs take from their project, in the tab bar, the sidebar, the header and Claude's statusline: soft pastels, as the UX 2.0 canvas draws them, or the stronger colors from before. Each tab keeps its own hue either way |
 | A color a tab (`tab_colors_apart`) | on | Each tab gets the hue farthest from the open tabs' as it opens, a deeper shade of it when it is close to one, kept while it is open and through restarts, so tabs, and the Usage view's spend chart, tell apart. Off, a tab wears its directory's color, the same for every tab of one checkout |

@@ -505,8 +505,10 @@ static CALL: LazyLock<Regex> = LazyLock::new(|| {
 /// At most this many tickets and pull requests are taken from an event.
 pub const MAX_REFS: usize = 4;
 
+// A Linear ticket's link, or a Jira one's on an Atlassian site: its
+// `/browse/<ID>`, or a board's `?selectedIssue=<ID>`.
 static LINEAR_LINK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"https://linear\.app/[\w-]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)[^\s"<>]*"#).unwrap()
+    Regex::new(r#"https://(?:linear\.app/[\w-]+/issue/|[\w.-]+\.atlassian\.net(?:/[^\s"<>?]*)?(?:/browse/|\?(?:[^\s"<>]*&)?selectedIssue=))([A-Za-z][A-Za-z0-9]*-\d+)[^\s"<>]*"#).unwrap()
 });
 static GITHUB_LINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)").unwrap());
@@ -1498,6 +1500,19 @@ mod tests {
                     url: None
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn a_jira_ticket_s_link_is_one_of_its_tickets_too() {
+        let refs = refs_from(
+            "See https://acme.atlassian.net/browse/AB-3 and https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-4",
+        );
+        let ids: Vec<&str> = refs.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["AB-3", "AB-4"]);
+        assert_eq!(
+            refs[0].url.as_deref(),
+            Some("https://acme.atlassian.net/browse/AB-3")
         );
     }
 

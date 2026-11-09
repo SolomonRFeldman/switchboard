@@ -634,7 +634,7 @@ impl Server {
     /// opens, so a typo in one leaves none half-started.
     fn ask_tickets(&mut self, client: ClientId, repo: PathBuf, clipboard: &str) {
         let picker = Picker::new(
-            "Linear ticket IDs or URLs, separated by commas or spaces",
+            "Ticket IDs or links, separated by commas or spaces",
             Vec::new(),
         )
         .named("tickets")
@@ -650,7 +650,7 @@ impl Server {
                 Err(bad) => {
                     server.say(
                         Some(client),
-                        &format!("Not a ticket ID or Linear issue URL: {bad}"),
+                        &format!("Not a ticket ID or ticket link: {bad}"),
                     );
                     return;
                 }
@@ -1769,7 +1769,7 @@ impl Server {
     /// tab each running `shape --continue <ID>`.
     fn ask_shaping(&mut self, client: ClientId, found: Found) {
         let picker = Picker::new(
-            "Linear ticket IDs or URLs, to carry on shaping each in a new tab",
+            "Ticket IDs or links, to carry on shaping each in a new tab",
             Vec::new(),
         )
         .named("tickets")
@@ -1786,7 +1786,7 @@ impl Server {
                 Err(bad) => {
                     server.say(
                         Some(client),
-                        &format!("Not a ticket ID or Linear issue URL: {bad}"),
+                        &format!("Not a ticket ID or ticket link: {bad}"),
                     );
                     return;
                 }

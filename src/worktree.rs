@@ -580,7 +580,8 @@ pub fn set_upstream(root: &Path, branch: &str, remote: &str, remote_branch: &str
 // The one reading of a ticket and a PR as someone gives one (a word typed,
 // a link pasted, an item's link), which `shape`, `shape-batch`, M-p's work
 // box and mission control's menus use too: a ticket's identifier in any
-// case, alone; a ticket from any URL's `/issue/`; a PR's URL, alone, with
+// case, alone; a ticket from any URL's `/issue/`, `/browse/` or
+// `selectedIssue=` (`tracker::LINK_ID`); a PR's URL, alone, with
 // a path, query or fragment after its number allowed. Finding one inside
 // other text (a branch's leading ticket, a link to shorten in a line) is a
 // different question, asked where it is.
@@ -588,9 +589,9 @@ pub fn set_upstream(root: &Path, branch: &str, remote: &str, remote_branch: &str
 /// A ticket's identifier, alone, in any case.
 pub static TICKET_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-\d+$").unwrap());
-/// A ticket in a URL's `/issue/`, any host.
+/// A Linear or Jira ticket link (`tracker::LINK_ID`), any host.
 pub static ISSUE_URL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"/issue/([A-Za-z][A-Za-z0-9]*-\d+)").unwrap());
+    LazyLock::new(|| Regex::new(crate::integrations::tracker::LINK_ID).unwrap());
 /// A PR's URL, alone: its owner, name and number.
 pub static PR_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(

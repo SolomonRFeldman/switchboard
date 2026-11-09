@@ -76,7 +76,7 @@ impl Source {
         match self {
             Source::Tabs => "Tab",
             Source::Notes => "Note",
-            Source::Linear => "Linear",
+            Source::Linear => crate::integrations::tracker::name(),
             Source::GitHub => "GitHub",
             Source::Slack => "Slack",
         }
@@ -96,7 +96,11 @@ impl Source {
         match self {
             Source::Tabs => "tab: ",
             Source::Notes => "note: ",
-            Source::Linear => "linear: ",
+            // The tracker set's own name; either names it (`named`).
+            Source::Linear => match crate::integrations::tracker::set() {
+                Some(crate::integrations::tracker::Tracker::Jira) => "jira: ",
+                _ => "linear: ",
+            },
             Source::GitHub => "gh: ",
             Source::Slack => "slack: ",
         }
@@ -112,7 +116,7 @@ impl Source {
         match word.to_lowercase().as_str() {
             "tab" | "tabs" => Some(Source::Tabs),
             "note" | "notes" => Some(Source::Notes),
-            "linear" => Some(Source::Linear),
+            "linear" | "jira" | "ticket" | "tickets" => Some(Source::Linear),
             "gh" | "github" => Some(Source::GitHub),
             "slack" => Some(Source::Slack),
             _ => None,
@@ -125,7 +129,8 @@ impl Source {
 pub fn starts_a_source(text: &str) -> bool {
     let text = text.to_lowercase();
     [
-        "tab", "tabs", "note", "notes", "linear", "gh", "github", "slack",
+        "tab", "tabs", "note", "notes", "linear", "jira", "ticket", "tickets", "gh", "github",
+        "slack",
     ]
     .iter()
     .any(|w| w.starts_with(&text))
@@ -712,7 +717,11 @@ pub async fn linear(query: &str) -> Result<Vec<Found>, String> {
                     .to_string()
             };
             let title = clean(&format!("{} {}", text("/identifier"), text("/title")));
-            let about = format!("Linear ticket, {}", text("/state/name"));
+            let about = format!(
+                "{} ticket, {}",
+                crate::integrations::tracker::name(),
+                text("/state/name")
+            );
             Found {
                 source: Source::Linear,
                 context: Context::in_body(&title, &about, &text("/description"), query, &title),

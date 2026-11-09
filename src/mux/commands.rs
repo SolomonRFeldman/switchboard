@@ -117,7 +117,7 @@ pub const USAGE: &[(&str, &str)] = &[
     ("list", "list: sessions, tabs and panes, as JSON"),
     (
         "sources",
-        "sources [refresh [view]]: mission control's GitHub and Linear views and today's calendar as JSON, or asked for now",
+        "sources [refresh [view]]: mission control's GitHub and ticket views and today's calendar as JSON, or asked for now",
     ),
     (
         "new-tab",

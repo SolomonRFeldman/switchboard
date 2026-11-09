@@ -154,6 +154,36 @@ pub const OWN_FILES: &[OwnFile] = &[
         ],
     },
     OwnFile {
+        file: "jira.json",
+        category: "Jira (jira.json)",
+        rows: &[
+            row(
+                "jiraSite",
+                "Site",
+                Kind::Text,
+                "Your Jira Cloud site (https://<yours>.atlassian.net), with Jira as the ticket tracker",
+            ),
+            row(
+                "jiraEmail",
+                "Email",
+                Kind::Text,
+                "The email of the Atlassian account your API token (the stored secret jira-api-token) belongs to",
+            ),
+            row(
+                "jiraProject",
+                "Project",
+                Kind::Text,
+                "The project key /shape files tickets in (ABC)",
+            ),
+            row(
+                "jiraLabels",
+                "Labels",
+                Kind::List,
+                "The labels /shape puts on a new ticket",
+            ),
+        ],
+    },
+    OwnFile {
         file: "browser.json",
         category: "Browser (browser.json)",
         rows: &[

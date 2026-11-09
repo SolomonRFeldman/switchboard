@@ -1544,14 +1544,15 @@ pub enum After {
         text: String,
         why: String,
     },
-    /// Linear has said which state closing a ticket moves it to: asked
-    /// about first, since it changes Linear for everyone.
+    /// The tracker has said which state closing a ticket moves it to:
+    /// asked about first, since it changes the tracker for everyone.
     CloseTicket {
         ticket: String,
         title: String,
         issue: String,
         state: String,
         name: String,
+        tracker: Option<String>,
     },
 }
 

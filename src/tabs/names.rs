@@ -247,6 +247,9 @@ pub struct Names {
     kept: HashMap<PathBuf, Kept>,
     prs: HashMap<(PathBuf, String), Known<Option<BranchPr>>>,
     titles: HashMap<String, Known<Option<String>>>,
+    /// The tracker `titles` came from (its key), so a switch to another
+    /// forgets them rather than show its title for the other's identifier.
+    titles_from: Option<&'static str>,
     switches: Switches,
     switches_read: Option<Instant>,
     /// Set by `set_switches`: the settings file isn't read.
@@ -263,6 +266,13 @@ impl Names {
         {
             self.switches = Switches::read();
             self.switches_read = Some(now);
+            let from = tracker::set().map(tracker::Tracker::key);
+            if from != self.titles_from {
+                // Each folder's label too, which holds its title.
+                self.titles.clear();
+                self.kept.clear();
+                self.titles_from = from;
+            }
         }
         self.switches
     }
@@ -502,7 +512,7 @@ impl Names {
         // In a steady order, so the file changes only when what it says does.
         prs.sort_by_key(|p| (p["repo"].to_string(), p["branch"].to_string()));
         titles.sort_by_key(|t| t["id"].to_string());
-        json!({ "prs": prs, "titles": titles })
+        json!({ "prs": prs, "titles": titles, "tracker": self.titles_from })
     }
 
     /// Takes in what `saved` kept, but what no longer holds, each asked for
@@ -540,6 +550,12 @@ impl Names {
                     asked: None,
                 });
         }
+        // Titles a build from before trackers kept are Linear's.
+        self.titles_from = match saved.get("tracker").and_then(Value::as_str) {
+            Some("jira") => Some("jira"),
+            Some("linear") | None => Some("linear"),
+            Some(_) => None,
+        };
         for entry in entries("titles").unwrap_or_default() {
             let (Some(id), Some(title), Some(next)) = (
                 entry.get("id").and_then(Value::as_str),

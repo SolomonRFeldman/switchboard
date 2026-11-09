@@ -152,7 +152,7 @@ pub fn commands(from_list: bool, in_note: bool, ux2: bool) -> Vec<Command> {
             Act::Press("choose-tab-note"),
         ),
         command(
-            "Shape the note's checklist items as Linear tickets",
+            "Shape the note's checklist items as tickets",
             "",
             "tabs",
             Act::Press("shape-note"),
@@ -164,7 +164,7 @@ pub fn commands(from_list: bool, in_note: bool, ux2: bool) -> Vec<Command> {
             Act::Press("read-link"),
         ),
         command(
-            "Search notes, Linear, GitHub and Slack",
+            "Search notes, tickets, GitHub and Slack",
             "M-S-f",
             "search",
             Act::Press("search-everything"),
