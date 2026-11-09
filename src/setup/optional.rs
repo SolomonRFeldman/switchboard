@@ -48,7 +48,7 @@ pub fn all() -> Vec<Optional> {
         all.push(line(
             util::block_on(jira::has_credentials()),
             "Jira (M-i, the Tickets view, ticket titles in tab names)",
-            "Jira, for M-i, the Tickets view and ticket titles in tab names: an API token from https://id.atlassian.com/manage-profile/security/api-tokens, stored with pbpaste | switchboard platform secret-set jira-api-token, and \"jiraSite\" and \"jiraEmail\" in ~/.config/switchboard/jira.json (or Settings, jira.json)",
+            "Jira, for M-i, the Tickets view and ticket titles in tab names: an API token from https://id.atlassian.com/manage-profile/security/api-tokens, stored with switchboard platform secret-set jira-api-token, and \"jiraSite\" and \"jiraEmail\" in ~/.config/switchboard/jira.json (or Settings, jira.json)",
         ));
         let project = util::read_json(paths::config_dir().join("jira.json"))
             .and_then(|v| {

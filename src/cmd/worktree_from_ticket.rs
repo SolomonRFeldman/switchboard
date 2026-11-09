@@ -1,12 +1,12 @@
-//! `worktree-from-ticket [path] <linear-ticket-id-or-url> [--prompt <text>]`:
-//! a git worktree on a new branch named after a Linear ticket, with Claude
+//! `worktree-from-ticket [path] <ticket-id-or-url> [--prompt <text>]`:
+//! a git worktree on a new branch named after a ticket, with Claude
 //! opened in it, told to work on the ticket. Ported from
 //! `bin/worktree-from-ticket`.
 //!
 //! `<path>` defaults to `.claude/worktrees`, resolved against the main
 //! clone, so it works from inside an existing worktree. The ticket comes
-//! from Linear's API (`integrations::linear`), with the key the rest of
-//! Switchboard uses.
+//! from the ticket tracker, Linear or Jira (`integrations::tracker`), with
+//! the key or token the rest of Switchboard uses.
 //!
 //! ```text
 //! worktree-from-ticket ABC-123        creates the worktree, opens claude
@@ -34,7 +34,7 @@ use crate::worktree::{self, Given, Purpose};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "Usage: worktree-from-ticket [path] <linear-ticket-id-or-url> [--prompt <text>]\n       \
+        "Usage: worktree-from-ticket [path] <ticket-id-or-url> [--prompt <text>]\n       \
          worktree-from-ticket init <zsh|bash>\n\n\
          Examples:\n  \
          worktree-from-ticket ABC-123\n  \
@@ -106,7 +106,7 @@ pub fn parse_identifier(input: &str) -> Option<(String, u64)> {
     Some((key.to_uppercase(), number.parse().ok()?))
 }
 
-/// What Linear says of the ticket, as far as the worktree needs it.
+/// What the tracker says of the ticket, as far as the worktree needs it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Issue {
     pub identifier: String,

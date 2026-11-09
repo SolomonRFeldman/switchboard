@@ -48,8 +48,8 @@ pub const TOKENS: &str = "https://id.atlassian.com/manage-profile/security/api-t
 
 /// What to do when Jira isn't set up, for a message or a view.
 pub const SET_UP: &str = "Jira isn't set up: make an API token at \
-     https://id.atlassian.com/manage-profile/security/api-tokens, copy it, and store it with \
-     `pbpaste | switchboard platform secret-set jira-api-token`; then add \"jiraSite\" \
+     https://id.atlassian.com/manage-profile/security/api-tokens, and store it with \
+     `switchboard platform secret-set jira-api-token` (it reads the token from stdin); then add \"jiraSite\" \
      (https://<yours>.atlassian.net) and \"jiraEmail\" to ~/.config/switchboard/jira.json, \
      or in Settings under Jira.";
 
@@ -135,9 +135,13 @@ async fn token() -> Option<Credential> {
     if let Some(known) = REMEMBERED.get() {
         return Some(known);
     }
-    let found = match stored_secret("jira-api-token").await {
+    let stored = stored_secret("jira-api-token")
+        .await
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let found = match stored {
         Some(value) => Credential {
-            value: value.trim().to_string(),
+            value,
             from: "the stored secret jira-api-token".to_string(),
         },
         None => Credential {
@@ -209,7 +213,8 @@ fn jira_error(response: &Response, token: &Credential) -> ServiceError {
             SERVICE,
             format!(
                 "Jira refused the API token from {}: it may have expired. Make a new one at \
-                 {TOKENS} and store it with `pbpaste | switchboard platform secret-set jira-api-token`.",
+                 {TOKENS} and store it with `switchboard platform secret-set jira-api-token` (it reads \
+                 the token from stdin).",
                 token.from
             ),
         );

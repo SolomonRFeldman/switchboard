@@ -3,8 +3,8 @@
 //!
 //! ```text
 //! shape <what the ticket is about>
-//! shape <linear-ticket-id-or-url> [what to do with it]
-//! shape --continue <linear-ticket-id-or-url> [what to do with it]
+//! shape <ticket-id-or-url> [what to do with it]
+//! shape --continue <ticket-id-or-url> [what to do with it]
 //! ```
 //!
 //! Claude reads the code, checks Linear for tickets that already cover it,
@@ -39,7 +39,7 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn usage() -> ExitCode {
     eprintln!(
-        "Usage: shape <what the ticket is about>\n       shape [--continue] <linear-ticket-id-or-url> [what to do with it]\n\nExamples:\n  shape \"people can't tell which phase is active\"\n  shape ABC-123\n  shape ABC-123 split out the API part"
+        "Usage: shape <what the ticket is about>\n       shape [--continue] <ticket-id-or-url> [what to do with it]\n\nExamples:\n  shape \"people can't tell which phase is active\"\n  shape ABC-123\n  shape ABC-123 split out the API part"
     );
     ExitCode::from(1)
 }
