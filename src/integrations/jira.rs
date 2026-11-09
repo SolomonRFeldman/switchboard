@@ -28,8 +28,10 @@
 //! Jira is the tracker set (but in a program you run yourself), and is
 //! counted in the request audit under Jira, as "REST".
 
-use std::sync::LazyLock;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{LazyLock, Mutex};
+use std::time::SystemTime;
 
 use anyhow::Result;
 use regex::Regex;
@@ -53,8 +55,41 @@ pub const SET_UP: &str = "Jira isn't set up: make an API token at \
      (https://<yours>.atlassian.net) and \"jiraEmail\" to ~/.config/switchboard/jira.json, \
      or in Settings under Jira.";
 
+/// jira.json as last read: where it was, its time and size then, and what
+/// it held.
+struct ConfigRead {
+    path: PathBuf,
+    stamp: Option<(SystemTime, u64)>,
+    map: serde_json::Map<String, Value>,
+}
+
+/// jira.json, read again only when it has changed, since every ticket's
+/// link is made from its site and a board fetch makes a few hundred.
+fn config_file() -> serde_json::Map<String, Value> {
+    static LAST: Mutex<Option<ConfigRead>> = Mutex::new(None);
+    let path = paths::config_dir().join("jira.json");
+    let stamp = std::fs::metadata(&path)
+        .and_then(|m| Ok((m.modified()?, m.len())))
+        .ok();
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(read) = last.as_ref()
+        && read.path == path
+        && stamp.is_some()
+        && read.stamp == stamp
+    {
+        return read.map.clone();
+    }
+    let map = util::read_json_object(&path);
+    *last = Some(ConfigRead {
+        path,
+        stamp,
+        map: map.clone(),
+    });
+    map
+}
+
 fn config(key: &str) -> Option<String> {
-    util::read_json_object(paths::config_dir().join("jira.json"))
+    config_file()
         .get(key)
         .and_then(Value::as_str)
         .map(|v| v.trim().to_string())
@@ -946,7 +981,7 @@ pub async fn close_ticket(key: &str, transition: &str, source: &str) -> Result<b
 /// Where the skills file a new ticket: the site, the project and the labels
 /// from jira.json, never the email or token.
 pub fn filing() -> Value {
-    let labels = util::read_json_object(paths::config_dir().join("jira.json"))
+    let labels = config_file()
         .get("jiraLabels")
         .cloned()
         .filter(Value::is_array)

@@ -223,7 +223,7 @@ impl Command {
                 "The repository is the one origin names, whatever the branch, opened in the Chrome profile browser.json gives GitHub. When it can't open, a box says why: no git repository, no remote on GitHub or no token."
             }
             Command::OpenTicket => {
-                "The ticket ID comes from the branch's name, else the tab's. With Linear's workspace written in linear.json, or Jira's site in jira.json, the link is made at once; without, Linear is asked where the ticket is."
+                "The ticket ID comes from the branch's name, else the tab's. With Linear's workspace written in linear.json, or Jira's site in jira.json, the link is made at once; without, the tracker is asked where the ticket is."
             }
             Command::PrReady => {
                 "The verdict is GitHub's own, so it agrees with the merge button, with the required checks, review, conflicts and auto-merge under it. The box offers to show the failing checks or have the tab's Claude resolve conflicts. A branch with no PR gets its own CI on GitHub instead."
@@ -262,7 +262,7 @@ impl Command {
                 "The ID is the first ticket-shaped part of the branch's name, else of the tab's name. A box says what was copied, or that there is no ticket."
             }
             Command::CopyTicketUrl => {
-                "The link is made from Linear's workspace in linear.json or Jira's site in jira.json, else asked of Linear. A box says what was copied, or that there is no ticket in the branch or tab name."
+                "The link is made from Linear's workspace in linear.json or Jira's site in jira.json, else asked of the tracker. A box says what was copied, or that there is no ticket in the branch or tab name."
             }
             Command::CopyPrNumber => {
                 "The PR is asked of GitHub by the pane's branch, a fork's upstream included. A box says what was copied, or that the branch has no pull request."

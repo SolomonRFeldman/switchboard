@@ -44,7 +44,7 @@ static ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
 static IN_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Z][A-Z0-9]*-[0-9]+").unwrap());
 static TICKET_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(^|[^(<])<?(https://(?:linear\.app/[^/\s]+/issue/|[\w.-]+\.atlassian\.net/browse/)([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
+    Regex::new(r"(^|[^(<])<?(https://(?:linear\.app/[^/\s]+/issue/|[\w.-]+\.atlassian\.net(?:/browse/|(?:/[^\s)>?&]*)?[?&](?:[^\s)>]*&)?selectedIssue=))([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
         .unwrap()
 });
 
@@ -741,6 +741,12 @@ mod tests {
             tidy("[x](https://linear.app/t/issue/AB-1)"),
             "[x](https://linear.app/t/issue/AB-1)",
             "a link already named stays"
+        );
+        assert_eq!(
+            tidy(
+                "See https://acme.atlassian.net/browse/AB-3 and https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-4"
+            ),
+            "See [AB-3](https://acme.atlassian.net/browse/AB-3) and [AB-4](https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-4)"
         );
     }
 }
