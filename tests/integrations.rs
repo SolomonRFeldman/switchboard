@@ -983,11 +983,26 @@ fn jira_answers(request: &http::Request) -> Option<Reply> {
         ("POST", "/rest/api/3/issue/AB-3/transitions") => {
             return Some(Reply::bytes(204, "text/plain", ""));
         }
-        ("POST", "/rest/api/3/search/jql") => json!({ "isLast": true, "issues": [
-            issue("AB-2", "Fix the login", "indeterminate", "In Progress", None),
-            issue("AB-5", "Dropped", "done", "Done", Some("Won't Do")),
-            issue("AB-6", "Shipped", "done", "Done", Some("Done"))
-        ] }),
+        ("POST", "/rest/api/3/search/jql") => {
+            let jql = request.json()["jql"].as_str().unwrap_or("").to_string();
+            let open = issue(
+                "AB-2",
+                "Fix the login",
+                "indeterminate",
+                "In Progress",
+                None,
+            );
+            let dropped = issue("AB-5", "Dropped", "done", "Done", Some("Won't Do"));
+            let shipped = issue("AB-6", "Shipped", "done", "Done", Some("Done"));
+            let issues = if jql.contains("statusCategory != Done") {
+                vec![open]
+            } else if jql.contains("statusCategory = Done") {
+                vec![dropped, shipped]
+            } else {
+                vec![open, dropped, shipped]
+            };
+            json!({ "isLast": true, "issues": issues })
+        }
         _ => return None,
     };
     Some(Reply::json(200, answer))
@@ -1051,14 +1066,25 @@ fn jira_answers_the_tracker_s_questions_in_linear_s_shape() {
     assert!(assigned[2]["canceledAt"].is_null());
     assert_eq!(assigned[0]["priority"], 2);
     assert_eq!(assigned[0]["project"]["name"], "Login");
-    let search = fake
+    // The open ones and the finished ones asked apart, so a week of closed
+    // tickets never takes an open one's place.
+    let searches: Vec<String> = fake
         .seen()
         .into_iter()
-        .find(|r| r.path() == "/rest/api/3/search/jql")
-        .unwrap();
-    let jql = search.json()["jql"].as_str().unwrap().to_string();
-    assert!(jql.contains("statusCategoryChangedDate >= -"), "{jql}");
-    assert!(jql.ends_with("m) ORDER BY updated DESC"), "{jql}");
+        .filter(|r| r.path() == "/rest/api/3/search/jql")
+        .map(|r| r.json()["jql"].as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        searches
+            .iter()
+            .any(|q| q.contains("statusCategory != Done ORDER BY")),
+        "{searches:?}"
+    );
+    let finished = searches
+        .iter()
+        .find(|q| q.contains("statusCategory = Done AND statusCategoryChangedDate >= -"))
+        .unwrap_or_else(|| panic!("{searches:?}"));
+    assert!(finished.ends_with("m ORDER BY updated DESC"), "{finished}");
 
     // The ticket view's detail: Markdown, comments, links and relations.
     let detail = util::block_on(tracker::detail("AB-3", "test"))

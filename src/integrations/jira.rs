@@ -592,16 +592,30 @@ fn jql_time(iso: &str, now_ms: i64) -> String {
 
 /// Assigned to you, open or finished or canceled since `since`, by when
 /// they reached Done, as Linear's, most recently changed first, each with
-/// its description for the card's pane.
+/// its description for the card's pane. The open ones and the finished ones
+/// are asked for apart, as Linear's canceled are, so a week of closed
+/// tickets never takes an open one's place in the first hundred: which
+/// finished ones count as canceled is up to their resolution's name, which
+/// JQL would have to know.
 pub async fn assigned(since: &str, source: &str) -> Result<Vec<Value>> {
-    let query = format!(
-        "assignee = currentUser() AND (statusCategory != Done OR statusCategoryChangedDate >= {}) ORDER BY updated DESC",
+    let finished_query = format!(
+        "assignee = currentUser() AND statusCategory = Done AND statusCategoryChangedDate >= {} ORDER BY updated DESC",
         jql_time(since, util::now_ms())
     );
     let fields = [FIELDS, &["description"]].concat();
-    Ok(jql(&query, &fields, 100, None, source)
-        .await?
+    let (open, finished) = tokio::join!(
+        jql(
+            "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC",
+            &fields,
+            100,
+            None,
+            source
+        ),
+        jql(&finished_query, &fields, 50, None, source)
+    );
+    Ok(open?
         .iter()
+        .chain(finished?.iter())
         .map(|issue| {
             let mut out = brief(issue);
             let description = issue.pointer("/fields/description").unwrap_or(&Value::Null);
