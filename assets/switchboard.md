@@ -10,13 +10,13 @@ What every Switchboard user's Claude Code needs to know about the workspace. Swi
 
 # My tabs
 
-My work runs in Switchboard's tabs, most of them a Claude session in a worktree of their own, so much of what is in flight is in a tab rather than in a repository or Linear. When an answer could depend on work that may be under way in another tab, look before answering, with this one command (it asks the workspace's server only, so it costs nothing to run):
+My work runs in Switchboard's tabs, most of them a Claude session in a worktree of their own, so much of what is in flight is in a tab rather than in a repository or the ticket tracker. When an answer could depend on work that may be under way in another tab, look before answering, with this one command (it asks the workspace's server only, so it costs nothing to run):
 
 ```
 switchboard tabs
 ```
 
-One line per pane, tab-separated: the tab's number (its own while the tab is open: closing another tab renumbers none), the pane's place (`<session>:@<tab>.%<pane>`), its name (with the PR number and the Linear ticket and title when it has them), Claude's state there (`waiting` on me, `done` and not yet seen, `working`, blank for idle), the program (a version number is Claude Code), its directory, a worktree's naming its branch, and, where the pane runs Claude, its session ID, its process ID, the name its `ListAgents` row shows and its address for `SendMessage` (blank where it runs none). Some cases where it matters, as examples of the kind of question, not a list of the only ones:
+One line per pane, tab-separated: the tab's number (its own while the tab is open: closing another tab renumbers none), the pane's place (`<session>:@<tab>.%<pane>`), its name (with the PR number and the ticket and title when it has them), Claude's state there (`waiting` on me, `done` and not yet seen, `working`, blank for idle), the program (a version number is Claude Code), its directory, a worktree's naming its branch, and, where the pane runs Claude, its session ID, its process ID, the name its `ListAgents` row shows and its address for `SendMessage` (blank where it runs none). Some cases where it matters, as examples of the kind of question, not a list of the only ones:
 
 - The status of a project or ticket: which of its tickets are being worked on in a tab right now, and which of those wait on me.
 - Starting work on a ticket, branch or PR: whether a tab already has it, so it isn't started twice.

@@ -1,6 +1,6 @@
 ---
 name: queue-and-clean
-description: Queue the current branch's PR for merge if it is not queued already, watch it in the background, fix what stops it merging (failing checks, conflicts, being dropped from the merge queue), and once it merges wait for it to deploy, test the feature in a real browser and record a video of the test, and once you approve the test make sure its Linear ticket is done and its item in your notes ticked, then remove this worktree and its local branch. In a repository that lands straight on its default branch, as `switchboard landing` says (~/.config/switchboard/repos.json, else GitHub's rules and the repository's CLAUDE.md), it lands the branch there instead, with the steps it gives, one worktree at a time.
+description: Queue the current branch's PR for merge if it is not queued already, watch it in the background, fix what stops it merging (failing checks, conflicts, being dropped from the merge queue), and once it merges wait for it to deploy, test the feature in a real browser and record a video of the test, and once you approve the test make sure its ticket (Linear or Jira) is done and its item in your notes ticked, then remove this worktree and its local branch. In a repository that lands straight on its default branch, as `switchboard landing` says (~/.config/switchboard/repos.json, else GitHub's rules and the repository's CLAUDE.md), it lands the branch there instead, with the steps it gives, one worktree at a time.
 argument-hint: "[PR number]"
 disable-model-invocation: true
 allowed-tools:
@@ -52,6 +52,7 @@ allowed-tools:
   - Bash(gh pr diff*)
   - Bash(gh run view *)
   - Bash(gh run list*)
+  - Bash(switchboard tracker *)
 ---
 
 # Queue and clean
@@ -102,7 +103,7 @@ The `sed` takes off the `#<PR> ` the label starts with when the branch has a PR,
    If the PR is already `MERGED`, skip the queue and the watch and go straight to "Deploy and test".
 
 4. Settle the ticket and the note now, so finishing up later asks nothing:
-   - **The ticket**: the Linear ticket the branch names (an ID like `ABC-123` at the start of the branch name), else one the PR's title or body names. None is fine: then there is no ticket to close out.
+   - **The ticket**: the ticket the branch names (an ID like `ABC-123` at the start of the branch name), else one the PR's title or body names. None is fine: then there is no ticket to close out.
    - **The note**: which of the user's notes holds this work's checklist item, settled as `~/.local/share/switchboard/claude/plugin/skills/note-watch/pick-note.md` says, with **No note** as an option, since not every PR has one. For a branch `/wtn` opened, that takes the note without asking, as pick-note's step 2 says: `switchboard landing --json <worktree>`'s `note` (its path) and `item` (the item's first line). Remember the answer; read the note only at "Closing out".
    - **The deploy and the test**: settle both as "Settling" in the file `switchboard skill-path deploy-test` prints says, so nothing after the merge has to ask.
 
@@ -349,7 +350,7 @@ What the landed change needs to take effect on this computer (Switchboard built 
 
 Inside the cleanup, with the ticket and note settled before watching. The note's item is ticked while its worktree is still there, which `item-done` does for a branch `/wtn` started: autopilot and `wtn` count an unticked item whose worktree is gone as free to take again.
 
-1. **The ticket**, before `item-done` runs. Read it with the Linear connector. In a completed state (its state's type is `completed`), there is nothing to do. Otherwise move it to the team's completed state, the one its other merged tickets use ("Done", "Deployed"…), unless the team's workflow moves it there on its own once the PR merges and it hasn't caught up yet: then leave it. Say which, in the final line's note (below).
+1. **The ticket**, before `item-done` runs. It is in Linear or Jira, whichever the tracker setting names: settle which, and how to read and move a ticket in it, as `~/.local/share/switchboard/plugin/skills/shape/tracker.md` says (with the setting off, there is no ticket to close out). Read it (`switchboard tracker show <ID>` will do; when it fails other than with exit 2 (the setting off), such as no key stored or a 3 (no such ticket, which Jira also answers for one the token's account can't see), through the tracker's connector, and only when that can't find it either is there no ticket to close out, as tracker.md's "Reading" says). In a completed state (its state's type is `completed`, a Jira status in the Done category), there is nothing to do. Otherwise move it to the team's completed state, the one its other merged tickets use ("Done", "Deployed"…; in Jira, the transition tracker.md's "Done" picks), unless the team's workflow moves it there on its own once the PR merges and it hasn't caught up yet: then leave it. Say which, in the final line's note (below).
 2. **The note**, by hand only when `item-done` says `no item`. Read only the note settled before watching. Find the checklist item for this work: one naming the ticket's ID or link, or the PR's number or link, else one whose words plainly match the ticket's or PR's title. Tick it (`- [x]`) and move it under the unticked items in its list, with anything indented under it, as the user's CLAUDE.md says for notes, changing those lines and nothing else, with the `Done:` line `item-done` would have written when the note's other ticked items carry one. When no item matches, or more than one might, tick nothing and say so.
 
 A `Done:` line under the ticked item, after a PR's merge or a landing on the default branch alike, reads `Done: <hash>, <took>[, landed without asking]. <says>`, `<took>` being how long the item took from when `wtn` started it (left out for a branch `wtn` didn't start), or `Done: <hash>, already on <branch>. <says>` for an item found done. Neither step fails the run: the work is on the default branch. Add what they did to the success line, `queue-and-clean: success (ticket ABC-123 done; note: ticked "…")`, or what they couldn't (`note: no item for ABC-123`).

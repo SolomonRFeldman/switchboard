@@ -40,6 +40,7 @@ pub mod slot;
 pub mod statusline;
 pub mod tabs;
 pub mod today_save;
+pub mod tracker;
 pub mod try_;
 pub mod try_sealed;
 pub mod update_main;
@@ -153,6 +154,11 @@ pub const COMMANDS: &[Command] = &[
         name: "setting",
         run: setting::main,
         about: "One of the workspace's settings, as Settings reads it; with a value (or --reset), changes it",
+    },
+    Command {
+        name: "tracker",
+        run: tracker::main,
+        about: "The ticket tracker for the skills: its name, where tickets are filed, or a ticket as JSON",
     },
     Command {
         name: "platform",
