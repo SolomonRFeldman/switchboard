@@ -20,7 +20,7 @@ fn set_up() -> (TestServer, TestClient, PathBuf) {
     let server = TestServer::start();
     common::write_settings(
         &server.home,
-        json!({"notifications": false, "tips": false, "github": false, "linear": false}),
+        json!({"notifications": false, "tips": false, "github": false, "tracker": "off"}),
     );
     // Each start a block: a line "---", then an argument a line.
     Claude::new()

@@ -612,17 +612,13 @@ impl Server {
     /// key would, then is remembered, and its key's tip comes a moment later.
     pub fn open_palette(&mut self, client: ClientId) {
         let all = settings::read_settings();
-        let on = |key: &str| {
-            all.iter()
-                .find(|s| s.key == key)
-                .is_none_or(|s| s.value != serde_json::Value::Bool(false))
-        };
+        let on = |key: &str| all.iter().find(|s| s.key == key).is_none_or(|s| s.is_on());
         let learn = on("palette_learn");
         // The diff's commands only where they can act (src/diff).
         let mut entries = palette::entries(
             &self.bindings,
             on("github"),
-            on("linear"),
+            on("tracker"),
             &self.plugin_views(),
         );
         let listed = self.diff_palette(client);

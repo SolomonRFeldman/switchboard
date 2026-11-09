@@ -38,10 +38,10 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::diff::in_place::IN_PLACE;
-use crate::integrations::{github, linear};
+use crate::integrations::{github, tracker};
 use crate::mux::server::{ClientId, Event as ServerEvent, Server};
 use crate::notes::images::{self, Picture};
 use crate::ui::Confirm;
@@ -136,13 +136,12 @@ async fn fetch(asked: &Asked) -> Result<Parts, String> {
             Ok(page::pr_parts(&full))
         }
         Asked::Ticket(id) => {
-            let data = linear::graphql(page::TICKET_QUERY, json!({ "id": id }), SOURCE)
+            let name = tracker::name();
+            tracker::detail(id, SOURCE)
                 .await
-                .map_err(|e| format!("Couldn't read {id} from Linear: {e}"))?;
-            data.get("issue")
-                .filter(|i| i.is_object())
-                .map(page::ticket_parts)
-                .ok_or_else(|| format!("Linear has no ticket {id}."))
+                .map_err(|e| format!("Couldn't read {id} from {name}: {e}"))?
+                .map(|issue| page::ticket_parts(&issue))
+                .ok_or_else(|| format!("{name} has no ticket {id}."))
         }
     }
 }
@@ -678,7 +677,7 @@ impl Server {
     /// `@in_place` first.
     pub fn image_view(&mut self, client: ClientId, ticket: bool) {
         let (tool, service) = if ticket {
-            (TICKET_TOOL, "linear")
+            (TICKET_TOOL, "tracker")
         } else {
             (PR_TOOL, "github")
         };

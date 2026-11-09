@@ -245,8 +245,8 @@ pub fn enabled(name: &str) -> bool {
         PRS => ("github", "pr_board"),
         CI => ("github", "view_ci"),
         LANDING => return settings::is_on("view_landing"),
-        TICKETS => ("linear", "ticket_board"),
-        INBOX => ("linear", "view_inbox"),
+        TICKETS => ("tracker", "ticket_board"),
+        INBOX => ("tracker", "view_inbox"),
         _ => return false,
     };
     settings::is_on(service) && settings::is_on(own)

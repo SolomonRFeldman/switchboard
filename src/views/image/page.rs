@@ -444,12 +444,6 @@ pub fn pr_parts(pr: &Value) -> Parts {
 }
 
 /// The ticket's fields the page shows, as pr-image.js asked for them.
-pub const TICKET_QUERY: &str = "query($id: String!) { issue(id: $id) { \
-    identifier title description priorityLabel \
-    state { name } assignee { name } project { name } labels { nodes { name } } \
-    children { nodes { identifier title state { name } } } \
-    comments(first: 100) { nodes { body createdAt user { name } botActor { name } } } } }";
-
 fn name(v: &Value, path: &str) -> Option<String> {
     v.pointer(path)
         .and_then(Value::as_str)

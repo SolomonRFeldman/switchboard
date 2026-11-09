@@ -2057,7 +2057,7 @@ impl Server {
         let view = |slug: &str| Some(crate::mission::Opening::View(slug.to_string()));
         match source {
             "slack" if on("view_slack") => view("slack"),
-            "inbox" if on("linear") && on("view_inbox") => view("inbox"),
+            "inbox" if on("tracker") && on("view_inbox") => view("inbox"),
             "prs" if crate::sources::enabled(crate::sources::PRS) => view("prs"),
             "meeting" | "calendar" if on("view_calendar") => view("calendar"),
             "habits" => Some(crate::mission::Opening::Settings),

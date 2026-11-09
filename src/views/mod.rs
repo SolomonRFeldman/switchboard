@@ -274,15 +274,15 @@ impl Command {
         }
     }
 
-    /// tmux.conf's tags: `#github` and `#linear` take a command out of the
+    /// tmux.conf's tags: `#github` and `#tracker` take a command out of the
     /// palette while that service is off.
     pub fn tags(self) -> &'static [&'static str] {
         match self {
             Command::PrView => &["github", "pr", "panes"],
-            Command::TicketView => &["linear", "ticket", "panes"],
+            Command::TicketView => &["tracker", "ticket", "panes"],
             Command::OpenPr => &["github", "pr", "browser"],
             Command::OpenRepo => &["github", "repo", "browser"],
-            Command::OpenTicket => &["linear", "ticket", "browser"],
+            Command::OpenTicket => &["tracker", "ticket", "browser"],
             Command::PrReady => &["github", "pr", "merge", "checks"],
             Command::Search => &["search", "find", "notes"],
             Command::ReadLink => &["links", "read", "browser"],
@@ -293,8 +293,8 @@ impl Command {
             Command::CopyMentionedTab => &["tabs", "links", "copy"],
             Command::OpenMedia => &["links", "image", "video", "media"],
             Command::OpenMergeQueue => &["github", "merge", "browser"],
-            Command::OpenProject => &["linear", "project", "browser"],
-            Command::CopyTicketId | Command::CopyTicketUrl => &["linear", "ticket", "copy"],
+            Command::OpenProject => &["tracker", "project", "browser"],
+            Command::CopyTicketId | Command::CopyTicketUrl => &["tracker", "ticket", "copy"],
             Command::CopyPrNumber | Command::CopyPrUrl => &["github", "pr", "copy"],
             Command::ClearImageCache => &["pr", "ticket", "images", "cache"],
         }

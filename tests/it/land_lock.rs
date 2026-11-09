@@ -932,7 +932,7 @@ fn with_ux2_the_landing_views_menu_moves_the_chosen_waiter_down_the_queue() {
     let server = TestServer::start();
     common::write_settings(
         &server.home,
-        json!({ "ux2": true, "github": false, "linear": false, "sidebar": false, "tips": false }),
+        json!({ "ux2": true, "github": false, "tracker": "off", "sidebar": false, "tips": false }),
     );
     let mut client = server.attach(170, 40);
     client.wait_text("$");

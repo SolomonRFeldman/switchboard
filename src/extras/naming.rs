@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 
 use super::{TicketTyped, ticket_typed};
-use crate::integrations::linear;
+use crate::integrations::tracker;
 use crate::mission::ask::Ask;
 use crate::mux::TabId;
 use crate::mux::server::{ClientId, Server};
@@ -27,7 +27,7 @@ impl Server {
     /// Asks what to call `tab`, a new tab opened in `dir`.
     pub(crate) fn ask_tab_name(&mut self, client: ClientId, tab: TabId, dir: PathBuf) {
         let mut options = vec![MenuOption::new("Type a name").key('n')];
-        let linear = settings::is_on("linear");
+        let linear = settings::is_on("tracker");
         if linear {
             options.push(MenuOption::new("Its ticket and the ticket's title").key('t'));
         }
@@ -88,7 +88,7 @@ impl Server {
         let asked = id.clone();
         self.off_task(
             client,
-            move || util::block_on(linear::ticket(&asked, "name the tab")),
+            move || util::block_on(tracker::ticket(&asked, "name the tab")),
             move |server, client, found| match found {
                 Ok(Some(t)) if !t.title.is_empty() => {
                     server.close_overlays(client, "message");

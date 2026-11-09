@@ -7,11 +7,21 @@
     "default": true
   },
   {
-    "key": "linear",
+    "key": "tracker",
     "category": "Integrations",
-    "label": "Linear",
-    "description": "Ticket commands in M-p, ticket titles in tab names and tickets in the Work map; off, the workspace asks Linear nothing by itself (programs you run, such as wt and worktree-done, still do)",
-    "default": true
+    "label": "Ticket tracker",
+    "description": "Where tickets come from, for ticket commands in M-p, ticket titles in tab names, the Tickets view and tickets in the Work map: Linear, or off, when the workspace asks no tracker anything by itself (programs you run, such as wt and worktree-done, still ask Linear)",
+    "choices": [
+      {
+        "value": "linear",
+        "label": "Linear"
+      },
+      {
+        "value": "off",
+        "label": "off"
+      }
+    ],
+    "default": "linear"
   },
   {
     "key": "image_cache",

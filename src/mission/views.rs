@@ -304,7 +304,7 @@ impl ViewId {
         }
     }
 
-    /// Its tags in M-p: `#github` and `#linear` take it out while that
+    /// Its tags in M-p: `#github` and `#tracker` take it out while that
     /// service is off.
     pub fn tags(&self) -> &'static [&'static str] {
         match self {
@@ -319,8 +319,8 @@ impl ViewId {
             ViewId::Landing => &["mission", "queue", "landing"],
             ViewId::Autopilot => &["mission", "autopilot"],
             ViewId::Routines => &["mission", "routines", "schedule"],
-            ViewId::Tickets => &["mission", "linear", "ticket"],
-            ViewId::Inbox => &["mission", "linear", "inbox"],
+            ViewId::Tickets => &["mission", "tracker", "ticket"],
+            ViewId::Inbox => &["mission", "tracker", "inbox"],
             ViewId::Sessions => &["mission", "claude", "context"],
             ViewId::Resources => &["mission", "cpu", "memory", "processes"],
             ViewId::Usage => &["mission", "claude", "usage", "cost"],
@@ -1124,7 +1124,7 @@ pub fn work_map(
             .max_by_key(|(_, w)| w.path.as_os_str().len())
             .map(|(i, _)| i)
     };
-    let linear = settings::is_on("linear");
+    let linear = settings::is_on("tracker");
     let mut rows: Vec<Placed> = Vec::new();
     let mut taken: Vec<crate::mux::TabId> = Vec::new();
     for (i, w) in all.iter().enumerate() {
@@ -1983,7 +1983,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert!(!shown(&off(&["usage"])).contains(&"Usage"));
-        let linear_off = shown(&off(&["linear"]));
+        let linear_off = shown(&off(&["tracker"]));
         assert!(!linear_off.contains(&"Tickets") && !linear_off.contains(&"Inbox"));
         assert!(linear_off.contains(&"PRs"));
         assert!(!shown(&off(&["reminders"])).contains(&"Reminders"));
@@ -1992,7 +1992,7 @@ mod tests {
         assert!(ViewId::Plugin("deploys".into()).shows_with(|_| false));
         assert_eq!(ViewId::Plugin("deploys".into()).title(), "deploys");
         assert!(ViewId::Prs.tags().contains(&"github"));
-        assert!(ViewId::Inbox.tags().contains(&"linear"));
+        assert!(ViewId::Inbox.tags().contains(&"tracker"));
         assert_eq!(ViewId::WorkMap.slug(), "work-map");
     }
 

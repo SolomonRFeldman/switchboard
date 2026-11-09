@@ -134,8 +134,8 @@ pub fn text_of(name: &str, key: Option<&str>) -> Option<Vec<String>> {
             "Its keys do nothing until it is on".into(),
             format!("again: {palette}, then Settings."),
         ],
-        "linear_off" => vec![
-            "Linear is off in Settings.".into(),
+        "tracker_off" => vec![
+            "The ticket tracker is off in Settings.".into(),
             String::new(),
             "Its keys do nothing until it is on".into(),
             format!("again: {palette}, then Settings."),

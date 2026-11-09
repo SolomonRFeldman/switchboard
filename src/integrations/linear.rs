@@ -9,9 +9,11 @@
 //! is kept ten minutes and forgotten once Linear refuses it. It is sent as
 //! `Authorization: <key>`, as Linear takes a personal API key.
 //!
-//! Every call refuses while the `linear` setting is off (but in a program
-//! you run yourself, `super::run_by_you`), and is counted in
-//! the request audit under Linear, as "GraphQL".
+//! Every call refuses unless Linear is the ticket tracker the `tracker`
+//! setting names (but in a program you run yourself, `super::run_by_you`),
+//! and is counted in the request audit under Linear, as "GraphQL". What the
+//! tracker asks (`super::tracker`) is answered at the end, in Linear's own
+//! shape, which every caller reads.
 
 use std::sync::LazyLock;
 
@@ -20,7 +22,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{Credential, Remembered, ensure_on, env_value, stored_secret};
+use super::{Credential, Remembered, env_value, stored_secret};
 use crate::net::{self, Audit, ErrorKind, Response, ServiceError};
 use crate::{paths, util};
 
@@ -94,7 +96,7 @@ pub fn forget_key() {
 /// a key it refuses `Unauthorized`, its rate limit spent `RateLimited`.
 /// `source` says what asked, for the request audit.
 pub async fn graphql(query: &str, variables: Value, source: &str) -> Result<Value> {
-    ensure_on("linear", SERVICE)?;
+    super::tracker::ensure(super::tracker::Tracker::Linear)?;
     let credential = credential().await?;
     let body = json!({ "query": query, "variables": variables });
     let headers = [("Authorization", credential.value.as_str())];
@@ -298,9 +300,217 @@ pub fn ticket_in(branch: &str) -> Option<String> {
         .map(|m| m.as_str().to_ascii_uppercase())
 }
 
+// ── The tracker's questions ─────────────────────────────────────────────────
+// What `super::tracker` asks while Linear is the tracker set, each answered
+// as Linear's GraphQL gives it, the shape every caller reads.
+
+const ASSIGNED: &str = "query($since: DateTimeOrDuration!) {
+  viewer {
+    assignedIssues(first: 100, orderBy: updatedAt, filter: { or: [{ state: { type: { in: [\"unstarted\", \"started\"] } } }, { completedAt: { gte: $since } }] }) {
+      nodes { identifier title description url priority priorityLabel estimate updatedAt completedAt canceledAt state { name type } project { name } }
+    }
+    canceled: assignedIssues(first: 50, orderBy: updatedAt, filter: { canceledAt: { gte: $since } }) {
+      nodes { identifier title description url priority priorityLabel estimate updatedAt completedAt canceledAt state { name type } project { name } }
+    }
+  }
+}";
+
+/// The issues assigned to you that are open, or were finished or canceled
+/// since `since`: the open and done ones, then the canceled ones, asked for
+/// apart so they never take an open one's place in the first hundred.
+pub async fn assigned(since: &str, source: &str) -> Result<Vec<Value>> {
+    let data = graphql(ASSIGNED, json!({ "since": since }), source).await?;
+    Ok(assigned_of(&data))
+}
+
+fn assigned_of(data: &Value) -> Vec<Value> {
+    ["/viewer/assignedIssues/nodes", "/viewer/canceled/nodes"]
+        .iter()
+        .flat_map(|at| nodes(data, at))
+        .collect()
+}
+
+const DETAIL: &str = "query($id: String!) { issue(id: $id) { \
+    identifier title url description createdAt updatedAt priorityLabel estimate \
+    state { name type } assignee { name } creator { id name } project { name } cycle { number name } \
+    labels { nodes { name } } parent { identifier title } \
+    children { nodes { identifier title url state { name type } } } \
+    relations { nodes { type relatedIssue { identifier title url state { name type } } } } \
+    attachments { nodes { title url metadata } } \
+    comments(first: 100) { nodes { id body createdAt parent { id } user { id name } botActor { name } } } } }";
+
+/// Everything the ticket view and image show of a ticket, or `None` when
+/// Linear has no such ticket.
+pub async fn detail(identifier: &str, source: &str) -> Result<Option<Value>> {
+    issue_by(DETAIL, identifier, source).await
+}
+
+const BRIEF: &str = "query IssueByIdentifier($number: Float!, $key: String!) { \
+     issues(filter: { number: { eq: $number }, team: { key: { eq: $key } } }) { \
+     nodes { identifier title url branchName state { name type } } } }";
+
+/// A ticket's identifier, title, link, branch name and state, or `None`
+/// when Linear has no such ticket, found by its team's key and number.
+pub async fn issue(identifier: &str, source: &str) -> Result<Option<Value>> {
+    let Some((key, number)) = identifier
+        .rsplit_once('-')
+        .and_then(|(k, n)| Some((k.to_uppercase(), n.parse::<u64>().ok()?)))
+    else {
+        return Ok(None);
+    };
+    let data = graphql(BRIEF, json!({ "number": number, "key": key }), source).await?;
+    Ok(data
+        .pointer("/issues/nodes/0")
+        .filter(|n| n.is_object())
+        .cloned())
+}
+
+async fn issue_by(query: &str, identifier: &str, source: &str) -> Result<Option<Value>> {
+    match graphql(query, json!({ "id": identifier }), source).await {
+        Ok(data) => Ok(data.get("issue").filter(|i| i.is_object()).cloned()),
+        Err(e) if net::kind_of(&e) == Some(&ErrorKind::NotFound) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+const ISSUES: &str = "query Issues($filters: [IssueFilter!]) { \
+     issues(filter: { or: $filters }, first: 150) { \
+     nodes { identifier title url state { name type } } } }";
+
+/// Comfortably under Linear's 250 page cap, so one query per chunk always
+/// gives every match rather than silently paginating.
+const CHUNK_SIZE: usize = 100;
+
+/// The tickets `identifiers` name that Linear has, one request per chunk
+/// rather than one per ticket: forty worktrees is forty round trips
+/// otherwise. The filter is an unordered `or`, and tickets that no longer
+/// exist (or the key can't see) don't come back at all.
+pub async fn issues(identifiers: &[String], source: &str) -> Result<Vec<Value>> {
+    let mut found = Vec::new();
+    for batch in identifiers.chunks(CHUNK_SIZE) {
+        let filters: Vec<Value> = batch
+            .iter()
+            .filter_map(|id| {
+                let (key, number) = id.rsplit_once('-')?;
+                let number: u64 = number.parse().ok()?;
+                Some(json!({ "and": [{ "number": { "eq": number } }, { "team": { "key": { "eq": key.to_uppercase() } } }] }))
+            })
+            .collect();
+        if filters.is_empty() {
+            continue;
+        }
+        let data = graphql(ISSUES, json!({ "filters": filters }), source).await?;
+        found.extend(nodes(&data, "/issues/nodes"));
+    }
+    Ok(found)
+}
+
+/// Linear's issue search, its first `limit`.
+pub async fn search(term: &str, limit: usize, source: &str) -> Result<Vec<Value>> {
+    let data = graphql(
+        &format!(
+            "query($q: String!) {{ searchIssues(term: $q, first: {limit}) {{ nodes {{ identifier title url state {{ name }} }} }} }}"
+        ),
+        json!({ "q": term }),
+        source,
+    )
+    .await?;
+    Ok(nodes(&data, "/searchIssues/nodes"))
+}
+
+const STANDUP: &str = "query($since: DateTimeOrDuration!) {
+  changed: issues(first: 100, filter: { or: [{ assignee: { isMe: { eq: true } } }, { creator: { isMe: { eq: true } } }], updatedAt: { gte: $since } }) { nodes { identifier title url
+    history(first: 50) { nodes { createdAt fromState { name } toState { name } } } } }
+  started: issues(first: 50, filter: { assignee: { isMe: { eq: true } }, state: { type: { eq: \"started\" } } }) { nodes { identifier title url state { name } } } }";
+
+/// For the standup note: the tickets assigned to you or made by you that
+/// changed since `since`, with their state changes (`changed`), and the
+/// ones you have in progress (`started`).
+pub async fn standup(since: &str, source: &str) -> Result<Value> {
+    graphql(STANDUP, json!({ "since": since }), source).await
+}
+
+/// The state closing a ticket moves it to: `(issue id, already done, state
+/// id, state name)`, or `None` when Linear has no such ticket or its team no
+/// completed state.
+pub async fn done_state_of(
+    identifier: &str,
+    source: &str,
+) -> Result<Option<(String, bool, String, String)>> {
+    let data = graphql(
+        "query($id: String!) { issue(id: $id) { id state { type } team { states(filter: { type: { eq: \"completed\" } }) { nodes { id name position } } } } }",
+        json!({ "id": identifier }),
+        source,
+    )
+    .await?;
+    let Some(issue) = data.get("issue").filter(|i| i.is_object()) else {
+        return Ok(None);
+    };
+    let text = |v: &Value, p: &str| {
+        v.pointer(p)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let mut states: Vec<&Value> = issue
+        .pointer("/team/states/nodes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .collect();
+    states.sort_by(|a, b| {
+        let p = |s: &Value| s.get("position").and_then(Value::as_f64).unwrap_or(0.0);
+        p(a).total_cmp(&p(b))
+    });
+    Ok(states.first().map(|state| {
+        (
+            text(issue, "/id"),
+            text(issue, "/state/type") == "completed",
+            text(state, "/id"),
+            text(state, "/name"),
+        )
+    }))
+}
+
+/// Moves a ticket to a state; whether Linear says it did.
+pub async fn close_ticket(issue: &str, state: &str, source: &str) -> Result<bool> {
+    let data = graphql(
+        "mutation($id: String!, $state: String!) { issueUpdate(id: $id, input: { stateId: $state }) { success } }",
+        json!({ "id": issue, "state": state }),
+        source,
+    )
+    .await?;
+    Ok(data
+        .pointer("/issueUpdate/success")
+        .and_then(Value::as_bool)
+        == Some(true))
+}
+
+fn nodes(data: &Value, path: &str) -> Vec<Value> {
+    data.pointer(path)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canceled_tickets_come_apart_from_the_open_ones() {
+        let data = json!({ "viewer": {
+            "assignedIssues": { "nodes": [{ "identifier": "AB-1" }] },
+            "canceled": { "nodes": [{ "identifier": "AB-2" }] },
+        } });
+        let issues = assigned_of(&data);
+        let ids: Vec<&str> = issues
+            .iter()
+            .filter_map(|i| i["identifier"].as_str())
+            .collect();
+        assert_eq!(ids, ["AB-1", "AB-2"]);
+        assert!(assigned_of(&json!({})).is_empty());
+    }
 
     #[test]
     fn a_ticket_s_project_is_its_link_or_none() {

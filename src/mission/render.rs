@@ -3132,7 +3132,7 @@ const WORK_USED: usize = 6;
 /// to a few letters, the rest to their shortest words, and last the checks
 /// and when it was used left out.
 fn work_widths(cols: usize) -> [usize; 7] {
-    let linear = crate::settings::is_on("linear");
+    let linear = crate::settings::is_on("tracker");
     let github = crate::settings::is_on("github");
     let mut w = [
         0,

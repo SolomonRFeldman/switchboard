@@ -281,8 +281,8 @@ pub const VIEWS: &[View] = &[
         needs: Some("autopilot"),
         lookups: false,
     },
-    service_view("Tickets", "ticket_board", "linear"),
-    service_view("Inbox", "view_inbox", "linear"),
+    service_view("Tickets", "ticket_board", "tracker"),
+    service_view("Inbox", "view_inbox", "tracker"),
     view("Sessions", "view_sessions"),
     view("Resources", "view_resources"),
     view("Usage", "usage"),
@@ -456,9 +456,10 @@ pub struct Inputs<'a> {
     pub now: i64,
 }
 
-/// Whether a setting is off, as `value(key) === false` read.
+/// Whether a setting is off, as `value(key) === false` read, or a choice of
+/// off (the ticket tracker's).
 fn off(value: &dyn Fn(&str) -> Option<Value>, key: &str) -> bool {
-    value(key) == Some(Value::Bool(false))
+    value(key).is_some_and(|v| v == Value::Bool(false) || v == "off")
 }
 
 /// Whether a view is on, and its service with it.

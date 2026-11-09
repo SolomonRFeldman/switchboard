@@ -2557,8 +2557,8 @@ impl Server {
         }
         // A command of a service turned off in Settings does nothing but
         // say so once, as settings.sh bound every key tagged #github or
-        // #linear to the service's tip.
-        for service in ["github", "linear"] {
+        // #tracker to the service's tip.
+        for service in ["github", "tracker"] {
             if action.tags().contains(&service) && !crate::settings::is_on(service) {
                 self.service_off(id, service);
                 return;

@@ -43,6 +43,7 @@ use image::RgbaImage;
 use super::image::cache::{self, Cache};
 use super::image::render::{self, Renderer};
 use super::markdown::{Images, Placement, Wanted};
+use crate::integrations::tracker::{self, Tracker};
 use crate::ui::images::{ImageCache, Placed, Spot, Tones};
 use crate::{net, photos, settings, util};
 
@@ -125,9 +126,13 @@ pub(crate) fn integration_of(host: &str) -> Option<&'static str> {
 }
 
 /// Whether a host may be reached for a picture, a redirect's included:
-/// any but one of an integration turned off.
+/// any but one of an integration turned off, Linear's while it is the
+/// ticket tracker set.
 pub(crate) fn reachable(host: &str) -> bool {
-    integration_of(host).is_none_or(settings::is_on)
+    match integration_of(host) {
+        Some("linear") => tracker::set() == Some(Tracker::Linear),
+        other => other.is_none_or(settings::is_on),
+    }
 }
 
 /// The header that signs a request for `url` in, if any: your GitHub token

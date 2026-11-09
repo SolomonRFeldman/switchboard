@@ -237,7 +237,7 @@ impl Command {
         }
     }
 
-    /// tmux.conf's tags: `#github` and `#linear` take a command out of the
+    /// tmux.conf's tags: `#github` and `#tracker` take a command out of the
     /// palette while that service is off.
     pub fn tags(&self) -> &'static [&'static str] {
         match self {
@@ -253,7 +253,7 @@ impl Command {
             Command::CalendarTab => &["calendar", "claude", "tabs", "new"],
             Command::SlackTab => &["slack", "claude", "tabs", "new"],
             Command::OpenPrNumber => &["github", "pr", "browser"],
-            Command::OpenTicketId => &["linear", "ticket", "browser"],
+            Command::OpenTicketId => &["tracker", "ticket", "browser"],
             Command::AwsLogin => &["aws", "login", "sso"],
             Command::Keys => &["help", "keys"],
             Command::SidebarRepo | Command::SidebarAll => &["sidebar", "tabs"],
@@ -441,7 +441,7 @@ mod tests {
         assert_eq!(ViewId::WorkMap.slug(), "work-map");
         assert_eq!(ViewId::Prs.slug(), "prs");
         assert!(Command::Mission(ViewId::Prs).tags().contains(&"github"));
-        assert!(Command::Mission(ViewId::Inbox).tags().contains(&"linear"));
+        assert!(Command::Mission(ViewId::Inbox).tags().contains(&"tracker"));
     }
 
     #[test]

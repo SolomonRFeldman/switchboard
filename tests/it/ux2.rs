@@ -494,7 +494,7 @@ fn with_ux2_settings_moves_by_category_flips_an_option_and_opens_the_file() {
     let server = TestServer::start();
     settings(
         &server,
-        json!({"ux2": true, "notifications": false, "github": false, "linear": false}),
+        json!({"ux2": true, "notifications": false, "github": false, "tracker": "off"}),
     );
     // The editor the view's menu starts: one that says what it was given
     // and waits.

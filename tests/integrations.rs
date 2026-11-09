@@ -362,7 +362,7 @@ fn turned_off_nothing_is_asked() {
     let env = Env::new("off");
     set("GH_TOKEN", "tok-5");
     set("LINEAR_API_KEY", "lin_api_5");
-    env.settings(json!({ "github": false, "linear": false }));
+    env.settings(json!({ "github": false, "tracker": "off" }));
     let err = util::block_on(github::graphql("query { x }", json!({}), "test")).unwrap_err();
     assert_eq!(kind(&err), ErrorKind::Off);
     assert!(err.to_string().contains("turned off in Settings"), "{err}");

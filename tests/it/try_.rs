@@ -448,9 +448,10 @@ fn a_sealed_try_reads_nothing_of_yours_writes_nothing_of_yours_and_reaches_no_so
         "a socket of yours can't be connected to"
     );
     let settings: Value = serde_json::from_str(&said[said.find('{').unwrap()..]).unwrap();
-    for key in ["github", "linear", "slack_background", "diff_story"] {
+    for key in ["github", "slack_background", "diff_story"] {
         assert_eq!(settings[key], json!(false), "{key} off");
     }
+    assert_eq!(settings["tracker"], json!("off"), "the ticket tracker off");
     let cleaned = Command::new(BIN)
         .args(["try", "--clean"])
         .arg(&review)

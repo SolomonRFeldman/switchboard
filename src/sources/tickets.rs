@@ -1,17 +1,13 @@
 //! Mission control's ticket board, ported from lib/sidebar/ticketboard.js:
-//! the Linear issues assigned to you, as columns by where they stand (Todo,
-//! In progress, In review (a started state whose name says review), and Done
-//! in the last `DONE_DAYS`), from one GraphQL query with the key the ticket
-//! scripts use (`integrations::linear`). Todo is by priority, urgent first,
-//! the rest most recently changed first, and each card names the tab working
-//! on its ticket, when a tab's name has it. With UX 2.0 a fifth group,
-//! Closed, holds the tickets canceled in the same days, which the board
-//! draws in a row under its columns; the query brings each ticket's
-//! description and estimate for the card and the pane beside the board.
-//!
-//! Closing a ticket from its menu is here too: the state it would move to,
-//! its team's first completed state by the team's own order (Done, or what
-//! the team calls it), then the move.
+//! the tickets assigned to you in the ticket tracker
+//! (`integrations::tracker`), as columns by where they stand (Todo, In
+//! progress, In review (a started state whose name says review), and Done in
+//! the last `DONE_DAYS`). Todo is by priority, urgent first, the rest most
+//! recently changed first, and each card names the tab working on its
+//! ticket, when a tab's name has it. With UX 2.0 a fifth group, Closed,
+//! holds the tickets canceled in the same days, which the board draws in a
+//! row under its columns; the tracker brings each ticket's description and
+//! estimate for the card and the pane beside the board.
 
 use std::sync::LazyLock;
 
@@ -19,7 +15,7 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use super::{TabInfo, in_columns, ms_of, text};
-use crate::integrations::linear;
+use crate::integrations::tracker;
 use crate::items::{Item, State, Target};
 
 pub const COLUMNS: [&str; 4] = ["Todo", "In progress", "In review", "Done"];
@@ -31,17 +27,6 @@ pub fn columns(ux2: bool) -> &'static [&'static str] {
     if ux2 { &COLUMNS_UX2 } else { &COLUMNS }
 }
 pub const DONE_DAYS: i64 = 7;
-
-const QUERY: &str = "query($since: DateTimeOrDuration!) {
-  viewer {
-    assignedIssues(first: 100, orderBy: updatedAt, filter: { or: [{ state: { type: { in: [\"unstarted\", \"started\"] } } }, { completedAt: { gte: $since } }] }) {
-      nodes { identifier title description url priority priorityLabel estimate updatedAt completedAt canceledAt state { name type } project { name } }
-    }
-    canceled: assignedIssues(first: 50, orderBy: updatedAt, filter: { canceledAt: { gte: $since } }) {
-      nodes { identifier title description url priority priorityLabel estimate updatedAt completedAt canceledAt state { name type } project { name } }
-    }
-  }
-}";
 
 fn column_of(issue: &Value) -> &'static str {
     static REVIEW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)review").unwrap());
@@ -140,94 +125,32 @@ pub fn board_from(issues: &[Value], tabs: &[TabInfo], ux2: bool) -> Vec<Item> {
     in_columns(columns(ux2), items)
 }
 
-/// Your assigned issues, as Linear has them.
+/// Your assigned issues, as the tracker has them.
 pub async fn fetch(now_ms: i64) -> anyhow::Result<Vec<Value>> {
     let since = jiff::Timestamp::from_millisecond(now_ms - DONE_DAYS * 86_400_000)
         .map(|t| t.to_string())
         .unwrap_or_default();
-    let data = linear::graphql(QUERY, json!({ "since": since }), "sidebar: tickets").await?;
-    Ok(issues_of(&data))
+    tracker::assigned(&since, "sidebar: tickets").await
 }
 
-/// The issues of the query's answer: the open and done ones, then the
-/// canceled ones, asked for apart so they never take an open one's place
-/// in the first hundred.
-fn issues_of(data: &Value) -> Vec<Value> {
-    ["/viewer/assignedIssues/nodes", "/viewer/canceled/nodes"]
-        .iter()
-        .filter_map(|at| data.pointer(at).and_then(Value::as_array))
-        .flatten()
-        .cloned()
-        .collect()
-}
-
-/// The state closing a ticket moves it to: `(issue id, already done, state
-/// id, state name)`, or `None` when Linear has no such ticket or its team no
-/// completed state.
+/// What closing a ticket from its menu takes, as `tracker::done_state_of`
+/// gives it: Linear's team's first completed state by the team's own order
+/// (Done, or what the team calls it).
 pub async fn done_state_of(
     identifier: &str,
 ) -> anyhow::Result<Option<(String, bool, String, String)>> {
-    let data = linear::graphql(
-        "query($id: String!) { issue(id: $id) { id state { type } team { states(filter: { type: { eq: \"completed\" } }) { nodes { id name position } } } } }",
-        json!({ "id": identifier }),
-        "sidebar: a ticket's state",
-    )
-    .await?;
-    let Some(issue) = data.get("issue").filter(|i| i.is_object()) else {
-        return Ok(None);
-    };
-    let mut states: Vec<&Value> = issue
-        .pointer("/team/states/nodes")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .collect();
-    states.sort_by(|a, b| {
-        let p = |s: &Value| s.get("position").and_then(Value::as_f64).unwrap_or(0.0);
-        p(a).total_cmp(&p(b))
-    });
-    Ok(states.first().map(|state| {
-        (
-            text(issue, "/id").to_string(),
-            text(issue, "/state/type") == "completed",
-            text(state, "/id").to_string(),
-            text(state, "/name").to_string(),
-        )
-    }))
+    tracker::done_state_of(identifier, "sidebar: a ticket's state").await
 }
 
-/// Moves a ticket to a state; whether Linear says it did.
+/// Closes a ticket; whether the tracker says it did.
 pub async fn close_ticket(issue: &str, state: &str) -> anyhow::Result<bool> {
-    let data = linear::graphql(
-        "mutation($id: String!, $state: String!) { issueUpdate(id: $id, input: { stateId: $state }) { success } }",
-        json!({ "id": issue, "state": state }),
-        "sidebar: a ticket's state",
-    )
-    .await?;
-    Ok(data
-        .pointer("/issueUpdate/success")
-        .and_then(Value::as_bool)
-        == Some(true))
+    tracker::close_ticket(issue, state, "sidebar: a ticket's state").await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn canceled_tickets_come_apart_from_the_open_ones() {
-        let data = json!({ "viewer": {
-            "assignedIssues": { "nodes": [{ "identifier": "AB-1" }] },
-            "canceled": { "nodes": [{ "identifier": "AB-2" }] },
-        } });
-        let issues = issues_of(&data);
-        let ids: Vec<&str> = issues
-            .iter()
-            .filter_map(|i| i["identifier"].as_str())
-            .collect();
-        assert_eq!(ids, ["AB-1", "AB-2"]);
-        assert!(issues_of(&json!({})).is_empty());
-    }
     use crate::mux::TabId;
 
     fn issue(id: &str, priority: u64, name: &str, kind: &str, updated: &str) -> Value {

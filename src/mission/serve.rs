@@ -41,6 +41,7 @@ use super::inbox_board;
 use super::remind;
 use super::views::{self, Scope, View, ViewId};
 use super::{After, Focus, Jump, Mission, MissionEvent, Snapshot, Spot};
+use crate::integrations::tracker::{self, Tracker};
 use crate::items::{Item, Target, ViewData};
 use crate::mux::input::{self, Input, Key, KeyCode, Mods, Mouse, MouseButton, MouseKind, Parsed};
 use crate::mux::server::{ClientId, Event, Server};
@@ -1417,7 +1418,7 @@ impl Server {
         if on("view_keys") {
             let shown = super::keymap::Shown {
                 github: on("github"),
-                linear: on("linear"),
+                linear: on("tracker"),
                 ask: on("diff_ask"),
                 easy: on("easy_keys"),
             };
@@ -3150,13 +3151,20 @@ impl Server {
     }
 
     /// Whether a kept notification's service is turned off (`github` for
-    /// a PR's news and a failing default branch, `linear` for the Inbox),
-    /// saying so: its choices would reach it.
+    /// a PR's news and a failing default branch, Linear as the ticket
+    /// tracker for the Inbox), saying so: its choices would reach it.
     fn notice_service_off(&mut self, client: ClientId, item: &Item) -> bool {
         let (source, _) = choices::notice_of(item);
         let (key, name) = match source.as_str() {
             "prs" | "ci" => ("github", "GitHub"),
-            "inbox" => ("linear", "Linear"),
+            "inbox" if tracker::set() == Some(Tracker::Linear) => return false,
+            "inbox" => {
+                self.say(
+                    Some(client),
+                    "The Inbox is Linear's, and Linear isn't the ticket tracker in Settings.",
+                );
+                return true;
+            }
             _ => return false,
         };
         if settings::is_on(key) {
@@ -3312,7 +3320,7 @@ impl Server {
         let on = settings::is_on;
         let shown = super::keymap::Shown {
             github: on("github"),
-            linear: on("linear"),
+            linear: on("tracker"),
             ask: on("diff_ask"),
             easy: on("easy_keys"),
         };

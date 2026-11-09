@@ -48,6 +48,15 @@ fn a_setting_is_changed_from_the_command_line() {
     let mine: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert!(mine.get("review_security").is_none(), "{mine}");
+    // Linear's on/off from before the ticket tracker's choice reads as it,
+    // and a change goes in under the new key, the old one gone with it.
+    std::fs::write(&file, "{\"linear\": false}\n").unwrap();
+    assert_eq!(run(&["tracker"]), (0, "off".into()));
+    assert_eq!(run(&["tracker", "linear"]), (0, "linear".into()));
+    assert_eq!(run(&["tracker"]), (0, "linear".into()));
+    let mine: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(mine, serde_json::json!({}));
     // A file that can't be read as JSON is never written over.
     std::fs::write(&file, "not json").unwrap();
     assert_eq!(run(&["review_security", "off"]).0, 1);

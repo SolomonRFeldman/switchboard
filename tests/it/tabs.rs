@@ -73,7 +73,7 @@ fn wait_tab(server: &TestServer, what: &str, pred: impl Fn(&Value) -> bool) -> V
 #[test]
 fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
     let server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let work = server.dir.path().join("shop");
     repo(&work, "feature-x");
 
@@ -142,7 +142,7 @@ fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
     // With tab colors vivid, the stronger color from before.
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors": "vivid"}),
+        json!({"github": false, "tracker": "off", "tab_colors": "vivid"}),
     );
     let vivid = tabs::accent_color("shop | branch:main", Shade::Vivid);
     assert_ne!(vivid, main);
@@ -151,7 +151,7 @@ fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
     // With project colors off, every tab is gray.
     settings(
         &server,
-        json!({"github": false, "linear": false, "accent_colors": false}),
+        json!({"github": false, "tracker": "off", "accent_colors": false}),
     );
     wait_tab(&server, "the gray", |t| t["color"] == "8a8a8a");
 }
@@ -159,7 +159,7 @@ fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
 #[test]
 fn a_tab_keeps_its_name_after_its_worktree_is_removed_until_it_moves() {
     let server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let main = server.dir.path().join("app");
     repo(&main, "main");
     let worktree = main.join(".claude/worktrees/fix-login");
@@ -208,7 +208,7 @@ fn a_tab_keeps_its_name_after_its_worktree_is_removed_until_it_moves() {
 #[test]
 fn m_shift_t_shows_the_tabs_whole_title_and_its_branch_and_copies_it() {
     let server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let work = server.dir.path().join("shop");
     repo(&work, "feature-x");
     let mut client = server.attach(100, 30);
@@ -335,7 +335,7 @@ mod from_the_services {
 #[test]
 fn the_tabs_command_names_each_panes_claude_and_its_address() {
     let server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let mut client = server.attach(100, 30);
     client.wait_text("$");
     server.ok(&["new-tab", "-d", "-n", "plain"]);
@@ -381,7 +381,7 @@ fn the_tabs_command_names_each_panes_claude_and_its_address() {
 #[test]
 fn a_tab_with_a_tab_dir_is_named_from_it_and_forgets_it_when_handed_over() {
     let server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let main = server.dir.path().join("app");
     repo(&main, "main");
     let worktree = main.join(".claude/worktrees/fix-login");

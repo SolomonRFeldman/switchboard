@@ -21,11 +21,11 @@ use std::process::ExitCode;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::board::{self, Board, Part, Piece};
 use super::pager::{self, Content};
-use crate::integrations::linear;
+use crate::integrations::tracker;
 use crate::photos::{Service, Who};
 use crate::ui::kit::{Mark, Tone};
 use crate::{paths, settings, util};
@@ -33,15 +33,6 @@ use crate::{paths, settings, util};
 const SOURCE: &str = "M-i ticket view";
 /// Where a diagram that can't be drawn here is shown properly.
 pub const PLACE: &str = "M-l in Linear";
-
-const QUERY: &str = "query($id: String!) { issue(id: $id) { \
-    identifier title url description createdAt updatedAt priorityLabel estimate \
-    state { name type } assignee { name } creator { id name } project { name } cycle { number name } \
-    labels { nodes { name } } parent { identifier title } \
-    children { nodes { identifier title url state { name type } } } \
-    relations { nodes { type relatedIssue { identifier title url state { name type } } } } \
-    attachments { nodes { title url metadata } } \
-    comments(first: 100) { nodes { id body createdAt parent { id } user { id name } botActor { name } } } } }";
 
 static ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
@@ -60,7 +51,7 @@ pub fn id_of(text: &str) -> Option<String> {
 /// The ticket a directory's branch names (linear-ticket.sh's match).
 pub fn id_for_dir(dir: &Path) -> Option<String> {
     let place = crate::tabs::git::locate(dir).filter(|p| p.on_branch())?;
-    linear::ticket_in(&place.branch)
+    tracker::ticket_in(&place.branch)
 }
 
 /// The ticket a tab's name gives, in capitals as Linear writes them
@@ -559,15 +550,13 @@ fn content(issue: &Value) -> Content {
     }
 }
 
-/// The ticket from Linear, or why it couldn't be read.
+/// The ticket from the tracker, or why it couldn't be read.
 pub async fn fetch(id: &str) -> Result<Value, String> {
-    let data = linear::graphql(QUERY, json!({ "id": id }), SOURCE)
+    let name = tracker::name();
+    tracker::detail(id, SOURCE)
         .await
-        .map_err(|e| format!("Couldn't read {id} from Linear: {e}"))?;
-    data.get("issue")
-        .filter(|i| i.is_object())
-        .cloned()
-        .ok_or_else(|| format!("Linear has no ticket {id}."))
+        .map_err(|e| format!("Couldn't read {id} from {name}: {e}"))?
+        .ok_or_else(|| format!("{name} has no ticket {id}."))
 }
 
 pub(crate) fn cache_file(id: &str) -> std::path::PathBuf {
@@ -614,6 +603,7 @@ pub fn main(id: Option<String>) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn issue() -> Value {
         json!({

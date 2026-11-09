@@ -27,7 +27,7 @@ fn settings(server: &TestServer, extra: Value) {
         "tips": false,
         "sidebar": false,
         "github": false,
-        "linear": false,
+        "tracker": "off",
         "view_work_map": false,
         "view_calendar": false,
         "view_slack": false,
@@ -376,7 +376,7 @@ fn the_settings_view_changes_a_setting_in_the_settings_file() {
     loop {
         let saved: Value =
             serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap_or_default();
-        if saved.get("github").is_none() && saved["linear"] == false {
+        if saved.get("github").is_none() && saved["tracker"] == "off" {
             break;
         }
         assert!(Instant::now() < deadline, "not written: {saved}");
@@ -1281,7 +1281,7 @@ fn with_ux2_the_inbox_shows_each_in_its_ticket_and_its_menu_acts_on_it() {
     ]);
     settings(
         &server,
-        json!({"ux2": true, "linear": true, "view_inbox": true, "photos": false}),
+        json!({"ux2": true, "tracker": "linear", "view_inbox": true, "photos": false}),
     );
     let mut client = server.attach(170, 40);
     client.wait_text("$");

@@ -32,19 +32,15 @@ use std::process::{Command, ExitCode};
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::integrations::linear;
+use crate::integrations::tracker;
 use crate::util;
 use crate::worktree::{self, Worktree};
 
 /// Linear's own words for "this issue is over"; every other type (triage,
 /// backlog, unstarted, started) means the work is still live.
 const DONE_TYPES: [&str; 2] = ["completed", "canceled"];
-
-/// Comfortably under Linear's 250 page cap, so one query per chunk always
-/// gives every match rather than silently paginating.
-const CHUNK_SIZE: usize = 100;
 
 fn usage() -> ExitCode {
     eprintln!(
@@ -95,54 +91,33 @@ fn identifier_for(w: &Worktree) -> Option<(String, u64)> {
         .or_else(|| find_identifier(&w.path.file_name()?.to_string_lossy()))
 }
 
-const ISSUES: &str = "query Issues($filters: [IssueFilter!]) { \
-     issues(filter: { or: $filters }, first: 150) { \
-     nodes { identifier title url state { name type } } } }";
-
-/// One request per chunk rather than one per ticket: forty worktrees is
-/// forty round trips otherwise. Keyed by identifier, since the filter is an
-/// unordered `or` and tickets that no longer exist (or the key can't see)
-/// don't come back at all.
+/// Keyed by identifier, since the tracker gives them in no order and leaves
+/// out tickets that no longer exist (or the key can't see).
 fn fetch_issues(identifiers: &[(String, u64)]) -> Result<HashMap<String, Issue>, String> {
-    util::block_on(async {
-        let mut found = HashMap::new();
-        for batch in identifiers.chunks(CHUNK_SIZE) {
-            let filters: Vec<Value> = batch
-                .iter()
-                .map(|(key, number)| {
-                    json!({ "and": [{ "number": { "eq": number } }, { "team": { "key": { "eq": key } } }] })
-                })
-                .collect();
-            let data = linear::graphql(
-                ISSUES,
-                json!({ "filters": filters }),
-                "worktree-done: tickets",
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-            for node in data
-                .pointer("/issues/nodes")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                let text = |p: &str| {
-                    node.pointer(p)
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string()
-                };
-                let issue = Issue {
-                    identifier: text("/identifier"),
-                    title: text("/title"),
-                    state_name: text("/state/name"),
-                    state_type: text("/state/type"),
-                };
-                found.insert(issue.identifier.clone(), issue);
-            }
-        }
-        Ok(found)
-    })
+    let ids: Vec<String> = identifiers
+        .iter()
+        .map(|(key, number)| format!("{key}-{number}"))
+        .collect();
+    let nodes = util::block_on(tracker::issues(&ids, "worktree-done: tickets"))
+        .map_err(|e| e.to_string())?;
+    Ok(nodes
+        .iter()
+        .map(|node| {
+            let text = |p: &str| {
+                node.pointer(p)
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
+            let issue = Issue {
+                identifier: text("/identifier"),
+                title: text("/title"),
+                state_name: text("/state/name"),
+                state_type: text("/state/type"),
+            };
+            (issue.identifier.clone(), issue)
+        })
+        .collect())
 }
 
 /// A text cut to `width` characters, an ellipsis at its end when cut.

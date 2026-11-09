@@ -89,9 +89,10 @@ impl Setting {
         }
     }
 
-    /// Whether an on/off option is on; a choice counts as on.
+    /// Whether an on/off option is on; a choice counts as on unless it is
+    /// "off" (the ticket tracker's).
     pub fn is_on(&self) -> bool {
-        self.value != Value::Bool(false)
+        self.value != Value::Bool(false) && self.value != "off"
     }
 
     /// Whether its value differs from its default.
@@ -144,12 +145,19 @@ pub fn schema() -> Vec<Setting> {
 }
 
 /// What you have changed, or nothing when the file is missing or isn't an object.
+// Your file as this version reads it, a key an earlier one saved
+// (`RENAMED`, `REVALUED`) read as its new one before `migrate` has
+// written it so.
 fn saved() -> Map<String, Value> {
-    util::read_json_object(settings_file())
+    let mine = util::read_json_object(settings_file());
+    migrated(&mine).unwrap_or(mine)
 }
 
 /// Settings that were on/off and became choices: each old value's choice.
-pub const REVALUED: &[(&str, &str, &str)] = &[("autopilot_close", "seen", "off")];
+pub const REVALUED: &[(&str, &str, &str)] = &[
+    ("autopilot_close", "seen", "off"),
+    ("tracker", "linear", "off"),
+];
 
 /// A saved value as its setting reads it now: an on/off of one that became
 /// a choice (`REVALUED`) is the choice that means the same.
@@ -212,15 +220,16 @@ pub fn reload_settings() -> Vec<Setting> {
     fresh
 }
 
-/// Whether an on/off option is on, from the cache. An option that isn't
-/// listed counts as on, as `isOn` did.
+/// Whether an option is on, from the cache: an on/off one not off, or a
+/// choice not "off" (the ticket tracker's). An option that isn't listed
+/// counts as on, as `isOn` did.
 pub fn is_on(key: &str) -> bool {
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     let settings = cache.get_or_insert_with(read_settings);
     settings
         .iter()
         .find(|o| o.key == key)
-        .is_none_or(|o| o.value != Value::Bool(false))
+        .is_none_or(Setting::is_on)
 }
 
 /// One option's value from the cache.
@@ -252,7 +261,8 @@ pub fn write_setting(key: &str, value: Value) -> Result<()> {
             .ok()
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
         {
-            Some(Value::Object(map)) => mine = map,
+            // As read, so an old key (`RENAMED`) isn't left to come back.
+            Some(Value::Object(map)) => mine = migrated(&map).unwrap_or(map),
             _ => bail!(
                 "{} can't be read as JSON; fix it by hand, then change the setting again",
                 paths::tilde(&file)
@@ -275,23 +285,35 @@ pub fn write_setting(key: &str, value: Value) -> Result<()> {
 }
 
 /// Settings renamed since they were saved, old key first: the Merge queues
-/// view became the Landing view. A setting that became a choice is in
-/// `REVALUED`.
-pub const RENAMED: &[(&str, &str)] = &[("view_merge_queues", "view_landing")];
+/// view became the Landing view, and Linear's on/off the ticket tracker's
+/// choice. A setting that became a choice is in `REVALUED`.
+pub const RENAMED: &[(&str, &str)] =
+    &[("view_merge_queues", "view_landing"), ("linear", "tracker")];
 
 /// Your file with what an earlier version saved read as this one names it:
 /// a renamed key's off kept under its new name (unless that is set already),
 /// the old key dropped. `None` when there is nothing to change.
 pub fn migrated(mine: &Map<String, Value>) -> Option<Map<String, Value>> {
+    let renamed = RENAMED.iter().any(|(old, _)| mine.contains_key(*old));
+    let mut out = mine.clone();
+    // Renamed first, so an off kept under a new name that became a choice
+    // (Linear's, now the tracker's) is written as its choice below.
+    for (old, new) in RENAMED {
+        if let Some(value) = out.shift_remove(*old)
+            && value == Value::Bool(false)
+            && !out.contains_key(*new)
+        {
+            out.insert(new.to_string(), value);
+        }
+    }
     let stale: Vec<&str> = REVALUED
         .iter()
         .map(|(k, _, _)| *k)
-        .filter(|k| mine.get(*k).is_some_and(Value::is_boolean))
+        .filter(|k| out.get(*k).is_some_and(Value::is_boolean))
         .collect();
-    if stale.is_empty() && !RENAMED.iter().any(|(old, _)| mine.contains_key(*old)) {
+    if stale.is_empty() && !renamed {
         return None;
     }
-    let mut out = mine.clone();
     // An on/off saved for a setting that became a choice is written as its
     // choice, the default's dropped.
     for key in stale {
@@ -304,14 +326,6 @@ pub fn migrated(mine: &Map<String, Value>) -> Option<Map<String, Value>> {
             out.shift_remove(key);
         } else {
             out.insert(key.to_string(), value);
-        }
-    }
-    for (old, new) in RENAMED {
-        if let Some(value) = out.shift_remove(*old)
-            && value == Value::Bool(false)
-            && !out.contains_key(*new)
-        {
-            out.insert(new.to_string(), value);
         }
     }
     Some(out)
@@ -360,6 +374,25 @@ mod tests {
             "on, the default, it is only dropped"
         );
         assert_eq!(migrated(&mine(json!({ "tips": false }))), None);
+    }
+
+    #[test]
+    fn linear_saved_off_is_the_ticket_tracker_off() {
+        let mine = |v: Value| v.as_object().unwrap().clone();
+        assert_eq!(
+            migrated(&mine(json!({ "linear": false, "tips": false }))),
+            Some(mine(json!({ "tips": false, "tracker": "off" })))
+        );
+        assert_eq!(
+            migrated(&mine(json!({ "linear": true }))),
+            Some(Map::new()),
+            "on, Linear as the tracker, the default, it is only dropped"
+        );
+        assert_eq!(
+            migrated(&mine(json!({ "linear": false, "tracker": "linear" }))),
+            Some(mine(json!({ "tracker": "linear" }))),
+            "a tracker chosen since is kept"
+        );
     }
 
     #[test]

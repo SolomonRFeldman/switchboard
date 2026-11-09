@@ -14,7 +14,8 @@
 //!   connector says nothing of a picture, so without the relay there is no
 //!   Slack photo.
 //! - Linear: the user's `avatarUrl` from its GraphQL API, with the key and
-//!   under the `linear` setting as every Linear request (src/integrations).
+//!   only while Linear is the ticket tracker, as every Linear request
+//!   (src/integrations).
 //! - GitHub: the login's picture from `avatars.githubusercontent.com`,
 //!   which needs no token, under the `github` setting.
 //! - An address (a calendar's attendee): Linear's user with that email
@@ -41,6 +42,7 @@ use anyhow::{Result, bail};
 use image::RgbaImage;
 use serde_json::{Value, json};
 
+use crate::integrations::tracker::{self, Tracker};
 use crate::net::{self, Audit};
 use crate::{integrations, paths, util};
 
@@ -298,9 +300,11 @@ pub async fn fetch(who: &Who) -> Result<Option<Vec<u8>>> {
             download(&url, &[], "GitHub").await
         }
         Service::Address => {
-            // Linear first, while it is on; Slack for anyone it doesn't know.
+            // Linear first, while it is the ticket tracker; Slack for anyone
+            // it doesn't know.
             let mut failed = None;
-            if crate::settings::is_on("linear") {
+            let linear = tracker::set() == Some(Tracker::Linear);
+            if linear {
                 match linear_photo_url(&who.id).await {
                     Ok(Some(url)) => return linear_download(&url).await,
                     Ok(None) => {}
@@ -329,7 +333,7 @@ pub async fn fetch(who: &Who) -> Result<Option<Vec<u8>>> {
             // photo is kept as missing and it is asked again once one is.
             match failed {
                 Some(e) => Err(e),
-                None if crate::settings::is_on("linear") => Ok(None),
+                None if linear => Ok(None),
                 None => bail!(
                     "Neither Linear nor the Slack relay is set up to find a photo by address."
                 ),

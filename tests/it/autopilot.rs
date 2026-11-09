@@ -89,7 +89,7 @@ fn set_up(
     std::fs::create_dir_all(&config).unwrap();
     // Whether you're at the computer is the desktop's to say, which a test
     // can't be sure of, so it doesn't pause while you're away.
-    let mut settings = json!({"notifications": false, "tips": false, "github": false, "linear": false, "pause_when_away": false});
+    let mut settings = json!({"notifications": false, "tips": false, "github": false, "tracker": "off", "pause_when_away": false});
     settings
         .as_object_mut()
         .unwrap()
@@ -801,7 +801,7 @@ fn an_item_wtn_refuses_in_its_tab_is_skipped_with_why_and_the_tab_closed() {
     let server = TestServer::start_with_env(&[("NOTES_DIR", notes.path().to_str().unwrap())]);
     common::write_settings(
         &server.home,
-        json!({"notifications": false, "tips": false, "github": false, "linear": false}),
+        json!({"notifications": false, "tips": false, "github": false, "tracker": "off"}),
     );
     Claude::new().install(&server.home.join("bin"));
     let repo = server.home.join("repo");
@@ -863,7 +863,7 @@ fn its_tab_starts_claude_with_the_landings_one_push_allowed_and_no_other_tab_doe
     let server = TestServer::start_with_env(&[("NOTES_DIR", notes.path().to_str().unwrap())]);
     let config = server.home.join(".config/switchboard");
     std::fs::create_dir_all(&config).unwrap();
-    let quiet = json!({"notifications": false, "tips": false, "github": false, "linear": false});
+    let quiet = json!({"notifications": false, "tips": false, "github": false, "tracker": "off"});
     common::write_settings(&server.home, quiet.clone());
     Claude::new()
         .answer("printf '%s\\n' \"$@\" > \"$HOME/claude-args\"")

@@ -119,7 +119,7 @@ mod with_github {
             ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
             ("SWITCHBOARD_GITHUB_API", &fake.url),
         ]);
-        settings(&server, json!({"linear": false}));
+        settings(&server, json!({"tracker": "off"}));
         let work = server.dir.path().join("widgets");
         std::fs::create_dir_all(&work).unwrap();
         git(&work, &["init", "-q"]);
@@ -195,7 +195,7 @@ mod with_github {
                 ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
                 ("SWITCHBOARD_GITHUB_API", &fake.url),
             ],
-            &json!({"notifications": false, "tips": false, "linear": false, "ux2": true, "sidebar": false, "photos": false}).to_string(),
+            &json!({"notifications": false, "tips": false, "tracker": "off", "ux2": true, "sidebar": false, "photos": false}).to_string(),
         );
         let work = server.dir.path().join("widgets");
         std::fs::create_dir_all(&work).unwrap();
@@ -366,7 +366,7 @@ mod with_github {
             ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
             ("SWITCHBOARD_GITHUB_API", &fake.url),
         ]);
-        settings(&server, json!({"linear": false}));
+        settings(&server, json!({"tracker": "off"}));
         let work = widgets(&server);
         let mut client = server.attach(140, 36);
         client.wait_text("$");
@@ -430,7 +430,7 @@ mod with_github {
             ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
             ("SWITCHBOARD_GITHUB_API", &fake.url),
         ]);
-        settings(&server, json!({"linear": false}));
+        settings(&server, json!({"tracker": "off"}));
         let work = widgets(&server);
         let mut client = server.attach(140, 36);
         client.wait_text("$");
@@ -455,7 +455,7 @@ mod with_github {
                 ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
                 ("SWITCHBOARD_GITHUB_API", &fake.url),
             ],
-            &json!({"notifications": false, "tips": false, "linear": false, "ux2": true, "sidebar": false, "photos": false}).to_string(),
+            &json!({"notifications": false, "tips": false, "tracker": "off", "ux2": true, "sidebar": false, "photos": false}).to_string(),
         );
         let work = widgets(&server);
         let mut client = server.attach(140, 36);

@@ -122,7 +122,7 @@ fn a_tab_s_pr_facts_and_the_views_arrive_from_the_background() {
     // when something asks for it.
     common::write_settings(
         &server.home,
-        json!({"notifications": false, "linear": false, "pause_when_away": false, "poll_fast": false}),
+        json!({"notifications": false, "tracker": "off", "pause_when_away": false, "poll_fast": false}),
     );
     let work = server.dir.path().join("widgets");
     std::fs::create_dir_all(&work).unwrap();
@@ -267,7 +267,7 @@ fn a_fork_s_tab_gets_its_pr_from_the_project_upstream_names() {
     ]);
     common::write_settings(
         &server.home,
-        json!({"notifications": false, "linear": false, "pause_when_away": false}),
+        json!({"notifications": false, "tracker": "off", "pause_when_away": false}),
     );
     let work = server.dir.path().join("widgets");
     std::fs::create_dir_all(&work).unwrap();
@@ -343,7 +343,7 @@ fn keys_typed_from_another_computer_keep_the_lookups_going_while_it_sits_idle_an
             ("SWITCHBOARD_GITHUB_API", &fake.url),
             ("SWITCHBOARD_PRESENCE", "259200000,locked"),
         ],
-        &json!({"notifications": false, "linear": false, "poll_fast": false}).to_string(),
+        &json!({"notifications": false, "tracker": "off", "poll_fast": false}).to_string(),
     );
     let work = server.dir.path().join("widgets");
     std::fs::create_dir_all(&work).unwrap();
@@ -403,7 +403,7 @@ fn the_description_beside_the_pr_board_draws_its_diagram_as_a_picture_where_the_
             ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
             ("SWITCHBOARD_GITHUB_API", &fake.url),
         ],
-        &json!({"notifications": false, "linear": false, "pause_when_away": false, "ux2": true})
+        &json!({"notifications": false, "tracker": "off", "pause_when_away": false, "ux2": true})
             .to_string(),
     );
     // The diagram as Mermaid would have drawn it, kept in the image cache
@@ -488,7 +488,7 @@ fn j_and_k_scroll_the_description_beside_the_pr_board() {
             ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
             ("SWITCHBOARD_GITHUB_API", &fake.url),
         ],
-        &json!({"notifications": false, "linear": false, "pause_when_away": false, "ux2": true})
+        &json!({"notifications": false, "tracker": "off", "pause_when_away": false, "ux2": true})
             .to_string(),
     );
     let work = server.dir.path().join("widgets");
@@ -571,7 +571,7 @@ fn a_failing_default_branch_landing_in_ci_is_in_the_ci_view_and_said_once_until_
         ("SWITCHBOARD_GITHUB_GRAPHQL", &fake.graphql_url()),
         ("SWITCHBOARD_GITHUB_API", &fake.url),
     ]);
-    let settings = json!({"linear": false, "pause_when_away": false});
+    let settings = json!({"tracker": "off", "pause_when_away": false});
     common::write_settings(&server.home, settings.clone());
     let repos = server.home.join(".config/switchboard/repos.json");
     let lands_in = |test_in: &str| {

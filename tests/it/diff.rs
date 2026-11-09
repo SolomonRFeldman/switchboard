@@ -31,7 +31,7 @@ use serde_json::{Value, json};
 /// Settings for the tests: no desktop notifications or tips, GitHub off
 /// (so the base is origin's default branch, and nothing is told ahead).
 fn settings(server: &TestServer) {
-    let all = json!({"notifications": false, "tips": false, "github": false, "linear": false});
+    let all = json!({"notifications": false, "tips": false, "github": false, "tracker": "off"});
     common::write_settings(&server.home, all);
 }
 
@@ -375,7 +375,7 @@ fn m_d_says_when_there_is_nothing_to_show_and_shows_uncommitted_changes_alone() 
     back(&server);
 
     // With the setting off, the commits alone, which have nothing to show.
-    let all = json!({"notifications": false, "tips": false, "github": false, "linear": false, "diff_uncommitted": false});
+    let all = json!({"notifications": false, "tips": false, "github": false, "tracker": "off", "diff_uncommitted": false});
     common::write_settings(&server.home, all);
     client.send(b"\x1bd");
     let screen = client.wait_text("Nothing to show: no commits past origin/main");
@@ -589,7 +589,7 @@ fn lazygit_and_the_diff_take_the_panes_place_from_the_palette_and_a_tabs_menu() 
 #[test]
 fn the_working_trees_changes_show_staged_and_not_in_their_own_lists() {
     let server = TestServer::start();
-    let all = json!({"notifications": false, "tips": false, "github": false, "linear": false, "diff_order": false});
+    let all = json!({"notifications": false, "tips": false, "github": false, "tracker": "off", "diff_order": false});
     common::write_settings(&server.home, all);
     let work = repository(server.dir.path());
     std::fs::write(work.join("src/a.js"), "export const a = 3;\n").unwrap();
@@ -634,7 +634,7 @@ fn the_working_trees_changes_show_staged_and_not_in_their_own_lists() {
 #[test]
 fn c_in_the_diff_goes_through_the_branchs_commits_one_at_a_time() {
     let server = TestServer::start();
-    let all = json!({"notifications": false, "tips": false, "github": false, "linear": false, "diff_order": false});
+    let all = json!({"notifications": false, "tips": false, "github": false, "tracker": "off", "diff_order": false});
     common::write_settings(&server.home, all);
     let work = repository(server.dir.path());
     std::fs::write(work.join("src/b.js"), "export const b = 3;\n").unwrap();

@@ -202,8 +202,8 @@ impl Server {
     /// M-p's "Shape a note's checklist items" (`typed` false) and "Shape a
     /// new Linear ticket" (`typed` true).
     pub fn shape_note(&mut self, client: ClientId, typed: bool) {
-        if !settings::is_on("linear") {
-            self.service_off(client, "linear");
+        if !settings::is_on("tracker") {
+            self.service_off(client, "tracker");
             return;
         }
         if typed {

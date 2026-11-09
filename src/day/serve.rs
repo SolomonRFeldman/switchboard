@@ -884,7 +884,7 @@ impl Server {
             self.day.standup_tried = ms;
             let parts = standup::Parts {
                 github: settings::is_on("github"),
-                linear: settings::is_on("linear"),
+                linear: settings::is_on("tracker"),
                 summary: settings::is_on("standup_summary"),
             };
             let tab_dirs = self.day_tab_dirs();
@@ -957,7 +957,7 @@ impl Server {
             self.day.todo_due_since = ms;
         }
         let waited_out = ms - self.day.todo_due_since >= TODO_WAIT_MS;
-        let (github, linear) = (settings::is_on("github"), settings::is_on("linear"));
+        let (github, linear) = (settings::is_on("github"), settings::is_on("tracker"));
         let mut sources = todo::Sources {
             github,
             ..todo::Sources::default()

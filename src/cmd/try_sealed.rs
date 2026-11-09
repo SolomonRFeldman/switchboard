@@ -80,7 +80,7 @@ use crate::{paths, requests, trust, util};
 /// rather than a screen of errors.
 pub const SEALED_OFF: &[(&str, &str)] = &[
     ("github", "false"),
-    ("linear", "false"),
+    ("tracker", "\"off\""),
     ("notifications", "false"),
     ("link_view_docs", "false"),
     ("chrome_profiles", "false"),

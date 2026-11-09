@@ -98,13 +98,13 @@ pub fn shown_key(keys: &str) -> String {
 /// Every command the palette offers, by description: the bound actions
 /// with a note and the actions with no key of their own, leaving out the
 /// palette itself (picking it would only open it again) and a command
-/// tagged `#github` or `#linear` while that service is off; and a
+/// tagged `#github` or `#tracker` while that service is off; and a
 /// "Mission control: <view>" for each sidebar plugin's view in `plugins`
 /// (the server's), by the title its plugin gives it now.
 pub fn entries(
     bindings: &Bindings,
     github: bool,
-    linear: bool,
+    tracker: bool,
     plugins: &[PluginView],
 ) -> Vec<Entry> {
     let mut by_action: Vec<Entry> = Vec::new();
@@ -174,7 +174,7 @@ pub fn entries(
     }));
     let off = |tags: &str, tag: &str| tags.split(' ').any(|t| t == tag);
     by_action
-        .retain(|e| (github || !off(&e.tags, "#github")) && (linear || !off(&e.tags, "#linear")));
+        .retain(|e| (github || !off(&e.tags, "#github")) && (tracker || !off(&e.tags, "#tracker")));
     by_action.sort_by(|a, b| {
         (&a.words, &a.tags)
             .cmp(&(&b.words, &b.tags))

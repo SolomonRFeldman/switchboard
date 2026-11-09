@@ -26,9 +26,9 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::integrations::linear;
+use crate::integrations::tracker;
 use crate::util;
 use crate::worktree::{self, Given, Purpose};
 
@@ -117,21 +117,10 @@ pub struct Issue {
     pub state: Option<(String, String)>,
 }
 
-const ISSUE: &str = "query IssueByIdentifier($number: Float!, $key: String!) { \
-     issues(filter: { number: { eq: $number }, team: { key: { eq: $key } } }) { \
-     nodes { identifier title branchName state { name type } } } }";
-
 fn fetch_issue(key: &str, number: u64) -> Result<Issue, String> {
-    let data = util::block_on(linear::graphql(
-        ISSUE,
-        json!({ "number": number, "key": key }),
-        "wt: the ticket",
-    ))
-    .map_err(|e| e.to_string())?;
-    let node = data
-        .pointer("/issues/nodes/0")
-        .filter(|n| n.is_object())
-        .ok_or_else(|| format!("no Linear issue found for {key}-{number}"))?;
+    let node = util::block_on(tracker::issue(&format!("{key}-{number}"), "wt: the ticket"))
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no {} issue found for {key}-{number}", tracker::name()))?;
     let text = |p: &str| node.pointer(p).and_then(Value::as_str).map(str::to_string);
     Ok(Issue {
         identifier: text("/identifier").unwrap_or_else(|| format!("{key}-{number}")),

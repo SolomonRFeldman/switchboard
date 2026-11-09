@@ -43,7 +43,7 @@ pub fn all() -> Vec<Optional> {
             "GitHub, for M-v, M-d's base, the PRs and CI views and PR numbers in tab names: install GitHub's CLI (gh) and run gh auth login",
         ));
     }
-    if settings::is_on("linear") {
+    if settings::is_on("tracker") {
         all.push(line(
             util::block_on(linear::api_key()).is_ok(),
             "Linear (M-i, the Tickets and Inbox views, ticket titles in tab names)",
