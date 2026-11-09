@@ -32,13 +32,19 @@ use crate::{paths, settings, util};
 
 const SOURCE: &str = "M-i ticket view";
 /// Where a diagram that can't be drawn here is shown properly.
-pub const PLACE: &str = "M-l in Linear";
+pub fn place() -> &'static str {
+    match tracker::asked() {
+        Ok(tracker::Tracker::Linear) => "M-l in Linear",
+        Ok(tracker::Tracker::Jira) => "M-l in Jira",
+        Err(_) => "M-l in the ticket tracker",
+    }
+}
 
 static ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
 static IN_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Z][A-Z0-9]*-[0-9]+").unwrap());
-static LINEAR_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(^|[^(<])<?(https://linear\.app/[^/\s]+/issue/([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
+static TICKET_URL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(^|[^(<])<?(https://(?:linear\.app/[^/\s]+/issue/|[\w.-]+\.atlassian\.net/browse/)([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
         .unwrap()
 });
 
@@ -71,10 +77,10 @@ pub fn ids_in(text: &str) -> Vec<String> {
     out
 }
 
-/// A bare link to a Linear ticket as a link named by its identifier, which
+/// A bare link to a Linear or Jira ticket as a link named by its identifier, which
 /// then reads as the identifier, clickable (pr-view.js's `tidy`).
 pub fn tidy(text: &str) -> String {
-    LINEAR_URL
+    TICKET_URL
         .replace_all(text, "${1}[${3}](${2})")
         .into_owned()
 }
@@ -524,15 +530,15 @@ pub fn board(issue: &Value, now: jiff::Timestamp) -> Board {
     Board {
         main,
         panel,
-        place: PLACE.into(),
+        place: place().into(),
         keys: [
-            ("j/k", "scroll"),
-            ("/", "search"),
-            ("M-l", "in Linear"),
-            ("M-v", "its PR"),
-            ("M-c", "back to Claude"),
+            ("j/k", "scroll".to_string()),
+            ("/", "search".to_string()),
+            ("M-l", format!("in {}", tracker::name())),
+            ("M-v", "its PR".to_string()),
+            ("M-c", "back to Claude".to_string()),
         ]
-        .map(|(k, w)| (k.to_string(), w.to_string()))
+        .map(|(k, w)| (k.to_string(), w))
         .to_vec(),
     }
 }
@@ -545,7 +551,7 @@ fn content(issue: &Value) -> Content {
     } else {
         Content::Markdown {
             text: markdown(issue),
-            place: PLACE.into(),
+            place: place().into(),
         }
     }
 }
@@ -559,17 +565,22 @@ pub async fn fetch(id: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("{name} has no ticket {id}."))
 }
 
+// The last copy of a ticket, kept for each tracker apart (Linear's where it
+// always was), so after a switch one tracker's ticket never shows as the
+// other's of the same identifier.
 pub(crate) fn cache_file(id: &str) -> std::path::PathBuf {
-    paths::cache_dir()
-        .join("ticket-view")
-        .join(format!("{id}.json"))
+    let dir = paths::cache_dir().join("ticket-view");
+    match tracker::set() {
+        Some(tracker::Tracker::Jira) => dir.join("jira").join(format!("{id}.json")),
+        _ => dir.join(format!("{id}.json")),
+    }
 }
 
 /// The ticket view: the last copy at once, then the ticket read again.
 pub fn main(id: Option<String>) -> ExitCode {
     let Some(id) = id else {
         return pager::run(
-            Content::Failed("No Linear ticket in this branch or tab name.".into()),
+            Content::Failed("No ticket in this branch or tab name.".into()),
             None,
             None,
         );

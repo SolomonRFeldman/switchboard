@@ -416,16 +416,16 @@ impl Action {
             Action::WorkOnPr => "Start work on a PR in a new tab (wtpr)".into(),
             Action::ReviewPr => "Review a contributor's PR in a new tab (/review-pr)".into(),
             Action::WorkOnNote => "Start work on a note's checklist items in new tabs (wtn)".into(),
-            Action::ContinueShaping => "Continue shaping Linear tickets, each in a new tab".into(),
-            Action::ShapeNote => "Shape a note's checklist items as Linear tickets".into(),
+            Action::ContinueShaping => "Continue shaping tickets, each in a new tab".into(),
+            Action::ShapeNote => "Shape a note's checklist items as tickets".into(),
             Action::ShapeNewTicket => {
-                "Shape a new Linear ticket from what you type, in a new tab".into()
+                "Shape a new ticket from what you type, in a new tab".into()
             }
             Action::PrImage => {
                 "View the branch's PR description as an image, as GitHub draws it, in place of this pane".into()
             }
             Action::TicketImage => {
-                "View the branch's Linear ticket as an image, as the PR image shows a PR, in place of this pane".into()
+                "View the branch's ticket as an image, as the PR image shows a PR, in place of this pane".into()
             }
             Action::MissionControl => "Open or close mission control".into(),
             Action::FindTab => "Search and jump to a tab".into(),
@@ -545,7 +545,7 @@ impl Action {
                 "The directories picked before come first, then the one you're in. Claude starts from your shell, which stays in the tab when it exits; then you may name the tab.".into()
             }
             Action::WorkOnTickets => {
-                "Asks for the tickets, IDs or Linear links, then the repository; each gets a worktree on its branch and a tab running Claude on it. Every ticket is checked before any tab opens.".into()
+                "Asks for the tickets, IDs or ticket links, then the repository; each gets a worktree on its branch and a tab running Claude on it. Every ticket is checked before any tab opens.".into()
             }
             Action::WorkOnBranch => {
                 "Lists the repository's branches, the most recently committed first; a name no branch matches makes a new one. The tab runs Claude in a worktree on it.".into()

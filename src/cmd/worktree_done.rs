@@ -366,9 +366,10 @@ pub fn main(args: Vec<String>) -> ExitCode {
         .collect();
     let identified = tagged.iter().filter(|(_, id)| id.is_some()).count();
     eprintln!(
-        "Checking {identified} of {} worktree{} against Linear",
+        "Checking {identified} of {} worktree{} against {}",
         tagged.len(),
-        if tagged.len() == 1 { "" } else { "s" }
+        if tagged.len() == 1 { "" } else { "s" },
+        tracker::name()
     );
     // Two worktrees on one ticket (its own, and one made later from its PR)
     // are asked about once.

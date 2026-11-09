@@ -237,7 +237,7 @@ pub fn main(args: Vec<String>) -> ExitCode {
     }
     let Some((key, number)) = parse_identifier(ticket) else {
         return worktree::fail(&format!(
-            "could not parse a Linear ticket identifier from \"{ticket}\""
+            "could not parse a ticket identifier from \"{ticket}\""
         ));
     };
     let issue = match fetch_issue(&key, number) {

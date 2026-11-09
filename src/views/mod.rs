@@ -169,14 +169,14 @@ impl Command {
                 "View the branch's PR description in a pane to the right, or close it"
             }
             Command::TicketView => {
-                "View the branch's Linear ticket, with its comments, in a pane to the right, or close it"
+                "View the branch's ticket, with its comments, in a pane to the right, or close it"
             }
             Command::OpenPr => "Open the branch's PR in the browser",
             Command::OpenRepo => "Open the repository in the browser",
-            Command::OpenTicket => "Open the branch's Linear ticket in the browser",
+            Command::OpenTicket => "Open the branch's ticket in the browser",
             Command::PrReady => "Check whether the branch's PR is ready to merge",
             Command::Search => {
-                "Search notes, Linear, GitHub and Slack at once, and read a result beside the pane"
+                "Search notes, tickets, GitHub and Slack at once, and read a result beside the pane"
             }
             Command::ReadLink => {
                 "Read a link in a pane beside this one, typed or one this pane shows"
@@ -194,7 +194,9 @@ impl Command {
                 "Open an image or video from this pane in its app, or show it in its folder"
             }
             Command::OpenMergeQueue => "Open the repository's merge queue in the browser",
-            Command::OpenProject => "Open the branch's Linear project in the browser",
+            Command::OpenProject => {
+                "Open the branch's project (a Linear project or Jira epic) in the browser"
+            }
             Command::CopyTicketId => "Copy the branch's ticket ID",
             Command::CopyTicketUrl => "Copy the branch's ticket URL",
             Command::CopyPrNumber => "Copy the branch's PR number",
@@ -212,7 +214,7 @@ impl Command {
                 "The PR is found from the pane's branch, in a fork's upstream too, the copy last read showing while GitHub is asked again. With UX 2.0 on, it opens in this pane's place. With no PR, the view says why."
             }
             Command::TicketView => {
-                "The ticket ID comes from the branch's name, else the tab's. The copy last read shows while Linear is asked again; with UX 2.0 on, it opens in this pane's place. With no ID found, a box says so."
+                "The ticket ID comes from the branch's name, else the tab's. The copy last read shows while the ticket tracker is asked again; with UX 2.0 on, it opens in this pane's place. With no ID found, a box says so."
             }
             Command::OpenPr => {
                 "A branch with no PR yet opens its repository instead, and a box says why. The link opens in the Chrome profile browser.json gives GitHub, and what went wrong is said in a box."
@@ -221,7 +223,7 @@ impl Command {
                 "The repository is the one origin names, whatever the branch, opened in the Chrome profile browser.json gives GitHub. When it can't open, a box says why: no git repository, no remote on GitHub or no token."
             }
             Command::OpenTicket => {
-                "The ticket ID comes from the branch's name, else the tab's. With a workspace written in linear.json the link is made at once; without, Linear is asked where the ticket is."
+                "The ticket ID comes from the branch's name, else the tab's. With Linear's workspace written in linear.json, or Jira's site in jira.json, the link is made at once; without, Linear is asked where the ticket is."
             }
             Command::PrReady => {
                 "The verdict is GitHub's own, so it agrees with the merge button, with the required checks, review, conflicts and auto-merge under it. The box offers to show the failing checks or have the tab's Claude resolve conflicts. A branch with no PR gets its own CI on GitHub instead."
@@ -254,13 +256,13 @@ impl Command {
                 "The queue is the one for the branch's PR's base branch, else for the repository's default branch when the branch has no PR. When it can't be found, a box says why."
             }
             Command::OpenProject => {
-                "Linear is asked which project the branch's ticket is in, the ID taken from the branch's name, else the tab's. A ticket in no project, or no ticket at all, is said in a box."
+                "The ticket tracker is asked which project (a Linear project or Jira epic) the branch's ticket is in, the ID taken from the branch's name, else the tab's. A ticket in no project, or no ticket at all, is said in a box."
             }
             Command::CopyTicketId => {
                 "The ID is the first ticket-shaped part of the branch's name, else of the tab's name. A box says what was copied, or that there is no ticket."
             }
             Command::CopyTicketUrl => {
-                "The link is made from the workspace written in linear.json, else asked of Linear. A box says what was copied, or that there is no ticket in the branch or tab name."
+                "The link is made from Linear's workspace in linear.json or Jira's site in jira.json, else asked of Linear. A box says what was copied, or that there is no ticket in the branch or tab name."
             }
             Command::CopyPrNumber => {
                 "The PR is asked of GitHub by the pane's branch, a fork's upstream included. A box says what was copied, or that the branch has no pull request."

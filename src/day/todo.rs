@@ -227,7 +227,7 @@ pub fn todo_prompt(date: &str, notes: &[Open], sources: &Sources, reviews: &[Str
         &sources.failing,
     ));
     lines.extend(block("Reviews asked of me", reviews));
-    lines.extend(block("Linear tickets assigned to me", &sources.tickets));
+    lines.extend(block("Tickets assigned to me", &sources.tickets));
     lines.extend(block("Linear inbox", &sources.inbox));
     lines.extend(block("Slack messages that need me", &sources.slack));
     lines.join("\n")
@@ -470,7 +470,7 @@ mod tests {
         let prompt = todo_prompt("Tue Nov 03 2026", &notes, &sources, &[]);
         assert!(prompt.contains("Plan:\n  - Ship the export"));
         assert!(prompt.contains("## Today's calendar\n```\n9:30 AM Standup"));
-        assert!(prompt.contains("## Linear tickets assigned to me"));
+        assert!(prompt.contains("## Tickets assigned to me"));
         assert!(!prompt.contains("Slack messages") && !prompt.contains("Reviews asked"));
     }
 

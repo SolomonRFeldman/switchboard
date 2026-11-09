@@ -65,7 +65,7 @@ pub enum Command {
     SlackTab,
     /// "Open a PR in the browser by number or URL".
     OpenPrNumber,
-    /// "Open a Linear ticket in the browser by ID, number or URL".
+    /// "Open a ticket in the browser by ID, number or link".
     OpenTicketId,
     /// "Log in to AWS (aws sso login) in your Chrome profile".
     AwsLogin,
@@ -170,7 +170,7 @@ impl Command {
                 "Open a Slack tab that keeps what is new for you on Slack in view (/loop 5m /slack-updates)"
             }
             Command::OpenPrNumber => "Open a PR in the browser by number or URL",
-            Command::OpenTicketId => "Open a Linear ticket in the browser by ID, number or URL",
+            Command::OpenTicketId => "Open a ticket in the browser by ID, number or link",
             Command::AwsLogin => "Log in to AWS (aws sso login) in your Chrome profile",
             Command::Keys => "Every key, by what it is about, with / to filter",
             Command::SidebarRepo => "Filter the sidebar to a repository",
@@ -220,7 +220,7 @@ impl Command {
                 "Typed in a box that starts with the clipboard's PR; empty is this tab's PR, and a bare number is one of the pane's repository. Then the browser, or a new tab working on it (wtpr). Needs GitHub."
             }
             Command::OpenTicketId => {
-                "Typed in a box that starts with the clipboard's ticket; empty is this tab's, and a bare number takes the team key of the branch's ticket. Then the browser, or a new tab running wt. Needs Linear."
+                "Typed in a box that starts with the clipboard's ticket; empty is this tab's, and a bare number takes the team key of the branch's ticket. Then the browser, or a new tab running wt. Needs Linear or Jira."
             }
             Command::AwsLogin => {
                 "Runs switchboard aws-login in a pane beside yours, logging in to the one [sso-session] in ~/.aws/config; the pane stays until a key, so its code can be read. Needs the AWS CLI."
@@ -360,11 +360,17 @@ pub fn ticket_typed(text: &str, branch_ticket: Option<&str>) -> Result<TicketTyp
         Regex::new(r"^https://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-[0-9]+)([/?#].*)?$")
             .unwrap()
     });
+    // A Jira ticket's page (`/browse/<ID>`, or a board's
+    // `?selectedIssue=<ID>`) on an https site.
+    static JIRA_URL: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^https://[^/?#]+(?:/[^?#]*?)?(?:/browse/|[?&]selectedIssue=)([A-Za-z][A-Za-z0-9]*-[0-9]+)(?:[/?#&].*)?$")
+            .unwrap()
+    });
     static ID: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
     static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?([0-9]+)$").unwrap());
     let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-    if let Some(m) = URL.captures(&text) {
+    if let Some(m) = URL.captures(&text).or_else(|| JIRA_URL.captures(&text)) {
         return Ok(TicketTyped::Url {
             id: m[1].to_uppercase(),
             url: text.clone(),
@@ -385,7 +391,7 @@ pub fn ticket_typed(text: &str, branch_ticket: Option<&str>) -> Result<TicketTyp
         };
         return Ok(TicketTyped::Id(format!("{}-{number}", team.to_uppercase())));
     }
-    Err(format!("Not a ticket ID, number or Linear URL: {text}"))
+    Err(format!("Not a ticket ID, number or ticket link: {text}"))
 }
 
 /// The tab number typed for M-0 (tab-goto.sh took digits alone).
@@ -521,6 +527,18 @@ mod tests {
                 id: "ABC-9".into()
             })
         );
+        for jira in [
+            "https://acme.atlassian.net/browse/ab-9",
+            "https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-9",
+        ] {
+            assert_eq!(
+                ticket_typed(jira, None),
+                Ok(TicketTyped::Url {
+                    url: jira.into(),
+                    id: "AB-9".into()
+                })
+            );
+        }
         assert!(ticket_typed("what", None).unwrap_err().starts_with("Not a"));
     }
 

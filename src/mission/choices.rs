@@ -82,10 +82,13 @@ pub enum Do {
         pane: PaneId,
         text: String,
     },
-    /// A ticket moved to its team's first completed state, asked first.
+    /// A ticket moved to its team's first completed state (Jira: a
+    /// transition into Done), asked first; `tracker` the one the card came
+    /// from, checked again before anything is changed.
     CloseTicket {
         ticket: String,
         title: String,
+        tracker: Option<String>,
     },
     /// An Inbox notification marked read in Linear.
     MarkRead(String),
@@ -544,6 +547,10 @@ pub fn board_choices(item: &Item, ctx: &Ctx<'_>) -> Vec<Choice> {
         ));
     }
     let ticket = text(&item.data, "/ticket").to_string();
+    // Working on, shaping and closing a ticket ask the tracker by its
+    // identifier, so only for a card from the tracker set now: after a
+    // switch, another tracker may have a ticket of the same identifier.
+    let here = !crate::sources::tickets::from_another_tracker(&item.data);
     if TICKET_ID.is_match(&ticket) {
         if let Some(t) = tab_naming(ctx.tabs, &ticket) {
             out.push(choice(
@@ -560,30 +567,43 @@ pub fn board_choices(item: &Item, ctx: &Ctx<'_>) -> Vec<Choice> {
             .find(|t| names(t, &format!("{}-\\d+", regex::escape(team))))
             .and_then(|t| t.path.clone())
             .unwrap_or_else(|| ctx.home.clone());
-        out.push(choice(
-            'w',
-            "Start work on it in a new tab (wt)",
-            Do::StartIn {
-                dir: dir.clone(),
-                work: Work::Ticket(ticket.clone()),
-            },
-        ));
-        out.push(choice(
-            's',
-            "Shape it in a new tab (shape)",
-            Do::StartIn {
-                dir,
-                work: Work::Shape(ticket.clone()),
-            },
-        ));
-        out.push(choice(
-            'D',
-            "Close it in Linear (its team's Done)",
-            Do::CloseTicket {
-                ticket: ticket.clone(),
-                title: item.title.clone(),
-            },
-        ));
+        if here {
+            out.push(choice(
+                'w',
+                "Start work on it in a new tab (wt)",
+                Do::StartIn {
+                    dir: dir.clone(),
+                    work: Work::Ticket(ticket.clone()),
+                },
+            ));
+            out.push(choice(
+                's',
+                "Shape it in a new tab (shape)",
+                Do::StartIn {
+                    dir,
+                    work: Work::Shape(ticket.clone()),
+                },
+            ));
+            let close = match crate::integrations::tracker::set() {
+                Some(crate::integrations::tracker::Tracker::Jira) => {
+                    "Close it in Jira (a move to Done)"
+                }
+                _ => "Close it in Linear (its team's Done)",
+            };
+            out.push(choice(
+                'D',
+                close,
+                Do::CloseTicket {
+                    ticket: ticket.clone(),
+                    title: item.title.clone(),
+                    tracker: item
+                        .data
+                        .get("tracker")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                },
+            ));
+        }
     }
     if !url.is_empty() {
         out.push(choice(
@@ -1292,7 +1312,10 @@ pub fn led_to_words(
         Do::SlackThread { .. } => "you asked for a tab for its thread".into(),
         // Said once Linear answers (`After::DropInbox`).
         Do::MarkRead(_) => return None,
-        Do::CloseTicket { .. } => "you chose to close it in Linear".into(),
+        Do::CloseTicket { tracker, .. } => match tracker.as_deref() {
+            Some("jira") => "you chose to close it in Jira".into(),
+            _ => "you chose to close it in Linear".into(),
+        },
         Do::Rsvp(_, answer) => match answer {
             crate::day::calendar::Rsvp::Yes => "you chose yes".into(),
             crate::day::calendar::Rsvp::Maybe => "you chose maybe".into(),

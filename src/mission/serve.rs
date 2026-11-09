@@ -3645,9 +3645,18 @@ impl Server {
                 );
                 self.mission_go(client, tab);
             }
-            Do::CloseTicket { ticket, title } => {
-                // Which state it would move to, from Linear, then asked about
-                // on the server, since it changes Linear for everyone.
+            Do::CloseTicket {
+                ticket,
+                title,
+                tracker,
+            } => {
+                // Which state it would move to, from the tracker, then asked
+                // about on the server, since it changes the tracker for
+                // everyone; never in a tracker the card didn't come from.
+                if crate::sources::tickets::moved(tracker.as_deref()) {
+                    self.say(Some(client), &moved_message(&ticket));
+                    return;
+                }
                 self.mission_busy_with(client, label, async move {
                     match crate::sources::tickets::done_state_of(&ticket).await {
                         Err(e) => (
@@ -3655,7 +3664,12 @@ impl Server {
                             None,
                         ),
                         Ok(None) => (
-                            Some(format!("{ticket}'s team has no completed state.")),
+                            Some(match crate::integrations::tracker::set() {
+                                Some(crate::integrations::tracker::Tracker::Jira) => {
+                                    format!("{ticket} has no way to Done in Jira.")
+                                }
+                                _ => format!("{ticket}'s team has no completed state."),
+                            }),
                             None,
                         ),
                         Ok(Some((_, true, _, _))) => {
@@ -3669,6 +3683,7 @@ impl Server {
                                 issue,
                                 state,
                                 name,
+                                tracker,
                             }),
                         ),
                     }
@@ -3968,6 +3983,7 @@ impl Server {
                 issue,
                 state,
                 name,
+                tracker,
             } => {
                 self.ask(
                     client,
@@ -3976,13 +3992,23 @@ impl Server {
                         if !yes {
                             return;
                         }
+                        if crate::sources::tickets::moved(tracker.as_deref()) {
+                            server.say(Some(client), &moved_message(&ticket));
+                            return;
+                        }
                         server.mission_busy_with(client, "Working on it", async move {
                             match crate::sources::tickets::close_ticket(&issue, &state).await {
                                 Ok(true) => (
                                     Some(format!("Moved {ticket} to {name}.")),
                                     Some(After::Tickets),
                                 ),
-                                Ok(false) => (Some("Linear didn't close it.".into()), None),
+                                Ok(false) => (
+                                    Some(format!(
+                                        "{} didn't close it.",
+                                        crate::integrations::tracker::name()
+                                    )),
+                                    None,
+                                ),
                                 Err(e) => {
                                     (Some(format!("Couldn't close it: {}", first_line(&e))), None)
                                 }
@@ -5113,6 +5139,12 @@ impl Server {
             },
         );
     }
+}
+
+// What closing a card says when the ticket tracker set has changed since the
+// card was read.
+fn moved_message(ticket: &str) -> String {
+    format!("The ticket tracker set has changed since {ticket} was read, so it was left as it is.")
 }
 
 /// An error's first line, for a note.

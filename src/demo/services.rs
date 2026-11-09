@@ -113,6 +113,9 @@ pub enum Service {
     Linear { key: String },
     /// Slack's Web API, `/api/<method>`, with the bot token as a Bearer.
     Slack { token: String },
+    /// Jira Cloud's REST API, under `/rest/api/3/`, signed in with Basic
+    /// auth: the account's email and an API token.
+    Jira { email: String, token: String },
     /// Any web server: what the test answers, and a 404 for the rest.
     Web,
 }
@@ -162,6 +165,7 @@ impl Service {
             Service::GitHubPublic { token } => github_refusal(request, token.as_ref(), false),
             Service::Linear { key } => linear_refusal(request, key),
             Service::Slack { token } => slack_refusal(request, token),
+            Service::Jira { email, token } => jira_refusal(request, email, token),
             Service::Web => None,
         }
     }
@@ -180,6 +184,10 @@ impl Service {
             Service::Slack { .. } => Reply::json(
                 404,
                 json!({ "ok": false, "error": "unknown_method", "req_method": request.path().trim_start_matches("/api/") }),
+            ),
+            Service::Jira { .. } => Reply::json(
+                404,
+                json!({ "errorMessages": ["Issue does not exist or you do not have permission to see it."], "errors": {} }),
             ),
             Service::Web => Reply::bytes(404, "text/plain", "Not Found\n"),
         }
@@ -265,6 +273,50 @@ fn github_refusal(request: &Request, token: Option<&String>, private: bool) -> O
         return Some(github_error(404, "Not Found", "rest"));
     }
     None
+}
+
+fn jira_refusal(request: &Request, email: &str, token: &str) -> Option<Reply> {
+    let expected = format!("Basic {}", base64(format!("{email}:{token}").as_bytes()));
+    // Jira says nothing useful about a token it refuses, only the status.
+    if request.header("authorization") != Some(expected.as_str()) {
+        return Some(Reply::bytes(
+            401,
+            "text/plain;charset=UTF-8",
+            "Client must be authenticated to access this resource.",
+        ));
+    }
+    if !request.path().starts_with("/rest/api/3/") {
+        return Some(
+            Service::Jira {
+                email: email.into(),
+                token: token.into(),
+            }
+            .not_found(request),
+        );
+    }
+    None
+}
+
+/// Base64, as Basic auth sends `email:token`.
+pub fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            out.push(if i <= chunk.len() {
+                ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char
+            } else {
+                '='
+            });
+        }
+    }
+    out
 }
 
 fn linear_refusal(request: &Request, key: &str) -> Option<Reply> {

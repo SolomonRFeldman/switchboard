@@ -195,7 +195,13 @@ impl ViewId {
     /// Whether mission control shows it with the settings as they are: its
     /// own setting on (`usage::habits::VIEWS`), and the service it needs.
     /// Landing shows only while something lands, but opening it keeps it.
+    /// The Inbox is Linear's, so it shows only with Linear as the ticket
+    /// tracker, as `sources::enabled` has it.
     pub fn shows(&self) -> bool {
+        use crate::integrations::tracker::{self, Tracker};
+        if *self == ViewId::Inbox && tracker::set() != Some(Tracker::Linear) {
+            return false;
+        }
         self.shows_with(settings::is_on)
     }
 
@@ -229,7 +235,7 @@ impl ViewId {
             }
             ViewId::Autopilot => "the note autopilot works, a card for each item",
             ViewId::Routines => "your prompts run on a schedule, their runs this week",
-            ViewId::Tickets => "your Linear issues by state",
+            ViewId::Tickets => "your tickets by state",
             ViewId::Inbox => "your unread Linear mentions, comments and assignments",
             ViewId::Sessions => "each Claude session's context and age",
             ViewId::Resources => "the CPU and memory each tab uses",
@@ -278,10 +284,10 @@ impl ViewId {
                 "Each routine with when it runs next, where it runs and how its last run went, then this week's runs by day; beside, the chosen one's prompt, today's runs and its next ones. n makes one, r runs it now, e changes it, p pauses it. Settings' \"Routines\" (routines)."
             }
             ViewId::Tickets => {
-                "Columns Todo, In progress, In review and Done in the last 7 days, an urgent one marked as needing you. Enter starts work or shapes it in a new tab. Needs Linear; Settings' \"Ticket board\" (ticket_board)."
+                "Columns Todo, In progress, In review and Done in the last 7 days, an urgent one marked as needing you. Enter starts work or shapes it in a new tab. Needs Linear or Jira; Settings' \"Ticket board\" (ticket_board)."
             }
             ViewId::Inbox => {
-                "Newest first, each in the sidebar's notifications too; status changes are left out. Enter offers what the Tickets board does, and marks it read in Linear. Needs Linear; Settings' \"Inbox\" (view_inbox)."
+                "Newest first, each in the sidebar's notifications too; status changes are left out. Enter offers what the Tickets board does, and marks it read in Linear. Needs Linear as the ticket tracker; Settings' \"Inbox\" (view_inbox)."
             }
             ViewId::Sessions => {
                 "The fullest context first, with its model, how long it has run and since it last did anything; one at 80% or more is marked as needing you. Settings' \"Sessions\" (view_sessions)."

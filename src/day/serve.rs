@@ -973,11 +973,11 @@ impl Server {
             (
                 "tickets",
                 linear && settings::is_on("ticket_board"),
-                "Linear tickets",
+                "your tickets",
             ),
             (
                 "inbox",
-                linear && settings::is_on("view_inbox"),
+                crate::sources::enabled(crate::sources::INBOX),
                 "the Linear inbox",
             ),
         ];

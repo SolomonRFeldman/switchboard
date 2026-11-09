@@ -579,8 +579,9 @@ pub fn set_upstream(root: &Path, branch: &str, remote: &str, remote_branch: &str
 
 static TICKET_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-\d+$").unwrap());
+// A Linear or Jira ticket link (`tracker::LINK_ID`).
 static ISSUE_URL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"/issue/([A-Za-z][A-Za-z0-9]*-\d+)").unwrap());
+    LazyLock::new(|| Regex::new(crate::integrations::tracker::LINK_ID).unwrap());
 static PR_URL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"github\.com/([^/]+)/([^/]+)/pull/(\d+)").unwrap());
 static PR_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?(\d+)$").unwrap());

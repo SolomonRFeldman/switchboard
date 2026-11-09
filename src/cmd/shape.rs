@@ -46,8 +46,9 @@ fn usage() -> ExitCode {
 
 static TICKET: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([A-Za-z][A-Za-z0-9]*-\d+)$").unwrap());
+// A Linear or Jira ticket link (`tracker::LINK_ID`).
 static ISSUE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"/issue/([A-Za-z][A-Za-z0-9]*-\d+)").unwrap());
+    LazyLock::new(|| Regex::new(crate::integrations::tracker::LINK_ID).unwrap());
 
 /// The ticket a word names: an issue URL's, or the word when it is an
 /// identifier.

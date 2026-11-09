@@ -90,7 +90,7 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     match args {
         [flag, id] if flag == "--ticket" => crate::views::ticket::id_of(id)
             .map(Asked::Ticket)
-            .ok_or_else(|| "That isn't a Linear ticket ID.".to_string()),
+            .ok_or_else(|| "That isn't a ticket ID.".to_string()),
         [flag] if flag == "--ticket" => Err("Which ticket? pr-image --ticket <ID>".into()),
         [] => Ok(Asked::Pr(
             std::env::current_dir().unwrap_or_else(|_| paths::home()),
@@ -100,11 +100,15 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     }
 }
 
-/// The file the last copy is kept in: the ticket's ID, or the checkout's
-/// git directory and branch, each `/` a `%`.
+/// The file the last copy is kept in: the ticket's ID (Jira's after
+/// `jira:`, so one tracker's ticket never shows as the other's), or the
+/// checkout's git directory and branch, each `/` a `%`.
 fn cache_file(asked: &Asked) -> Option<PathBuf> {
     let key = match asked {
-        Asked::Ticket(id) => id.clone(),
+        Asked::Ticket(id) => match tracker::set() {
+            Some(tracker::Tracker::Jira) => format!("jira:{id}"),
+            _ => id.clone(),
+        },
         Asked::Pr(dir) => {
             let place = crate::tabs::git::locate(dir)?;
             format!("{}:{}", place.git_dir.display(), place.branch)
@@ -707,7 +711,7 @@ impl Server {
         let mut command = vec![exe(), "pr-image".into()];
         if ticket {
             let Some(id) = self.ticket_here(tab, &dir) else {
-                self.say(Some(client), "No Linear ticket in this branch or tab name");
+                self.say(Some(client), "No ticket in this branch or tab name");
                 return;
             };
             command.extend(["--ticket".into(), id]);

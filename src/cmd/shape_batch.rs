@@ -42,8 +42,11 @@ fn usage() -> ExitCode {
 }
 
 static TICKET: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:[A-Za-z][A-Za-z0-9]*-\d+|https?://\S*/issue/[A-Za-z][A-Za-z0-9]*-\d+\S*)$")
-        .unwrap()
+    Regex::new(&format!(
+        r"^(?:[A-Za-z][A-Za-z0-9]*-\d+|https?://\S*{}\S*)$",
+        crate::integrations::tracker::LINK_ID
+    ))
+    .unwrap()
 });
 
 /// A line break and the space around it, made one space, so an item is one

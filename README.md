@@ -102,6 +102,7 @@ Everything of your own is in `~/.config/switchboard/`, which nothing writes over
 | `claude.json` | Where your rules come from instead: another file, or a git repository of yours |
 | `browser.json` | The Chrome profile each site's links open in, and the default one |
 | `linear.json` | Your Linear workspace, and the team and labels `/shape` files tickets with |
+| `jira.json` | Your Jira site and email, and the project and labels `/shape` files tickets with, when Jira is the ticket tracker |
 | `slack-updates.json` | The Slack channels the Slack view shows in full |
 | `slack-relay.json` | Your Slack member ID, the one person the relay listens to |
 | `oncall.json`, `oncall-rules.md` | The channels `/oncall` watches, and your team's rules |

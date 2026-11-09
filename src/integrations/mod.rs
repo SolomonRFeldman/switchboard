@@ -16,7 +16,9 @@
 //! the async runtime and kept a while, since reading the Keychain is a
 //! process on macOS and the security agent inspects every one.
 
+pub mod adf;
 pub mod github;
+pub mod jira;
 pub mod linear;
 pub mod tracker;
 

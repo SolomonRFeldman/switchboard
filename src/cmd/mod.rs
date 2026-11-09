@@ -204,7 +204,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "worktree-done",
         run: worktree_done::main,
-        about: "Remove the worktrees whose Linear ticket is done or canceled, picked from a list",
+        about: "Remove the worktrees whose ticket is done or canceled, picked from a list",
     },
     Command {
         name: "worktree-from-branch",
@@ -224,7 +224,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "worktree-from-ticket",
         run: worktree_from_ticket::main,
-        about: "A worktree for a Linear ticket",
+        about: "A worktree for a ticket",
     },
     Command {
         name: "worktree-resume",
@@ -309,7 +309,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "ticket-view",
         run: crate::views::ticket_view_main,
-        about: "A Linear ticket with its comments, paged (M-i runs it beside a pane)",
+        about: "A ticket with its comments, paged (M-i runs it beside a pane)",
     },
     Command {
         name: "link-view",

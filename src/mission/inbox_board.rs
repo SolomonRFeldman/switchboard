@@ -465,7 +465,7 @@ fn ticket_lines(item: &Item, w: usize, m: &Mission, roomy: bool) -> Vec<Drawn> {
                 return from_your_work(out, item, w, m, roomy, tab);
             };
             let body_w = w.saturating_sub(2).min(kit::WRAP_MAX);
-            let place = crate::views::ticket::PLACE;
+            let place = crate::views::ticket::place();
             if comments.is_empty() {
                 let about = super::render::markdown_lines(
                     t.get("description").and_then(Value::as_str).unwrap_or(""),

@@ -127,7 +127,7 @@ pub fn start_prompt(pr: &PrDetails, me: Option<&str>) -> String {
         } else {
             String::new()
         },
-        "Before changing anything, read its description, its diff, its unresolved review threads and its failing checks, and its Linear ticket if the branch or the description names one.".into(),
+        "Before changing anything, read its description, its diff, its unresolved review threads and its failing checks, and its ticket if the branch or the description names one.".into(),
         "Then tell me in a few lines where it stands: what's left (review comments to answer, failing checks, merge conflicts, anything the ticket asks for that the PR doesn't do) and what you would do next.".into(),
         "Don't change anything until I say.".into(),
         if theirs {

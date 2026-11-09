@@ -142,7 +142,7 @@ fn m_shift_w_opens_a_tab_for_each_ticket_typed_running_wt_and_refuses_anything_e
     client.wait_text("Tickets:");
     client.type_text("ABC-3 $(touch x)");
     client.send(b"\r");
-    client.wait_text("Not a ticket ID or Linear issue URL: $(touch");
+    client.wait_text("Not a ticket ID or ticket link: $(touch");
     assert_eq!(tabs(&server).len(), before + 2, "no tab half-started");
 }
 

@@ -739,7 +739,7 @@ impl Server {
             move |server, client, prefill| {
                 let ask = Ask::new(
                     "Open a ticket",
-                    "A ticket ID, number or Linear URL; empty for this tab's ticket, as M-l opens it.",
+                    "A ticket ID, number or link; empty for this tab's ticket, as M-l opens it.",
                 )
                 .text(prefill)
                 .empty_ok();

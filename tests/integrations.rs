@@ -20,7 +20,7 @@ use std::sync::{Mutex, MutexGuard};
 use common::http::{self, Reply, Service};
 use common::stand_in;
 use serde_json::{Value, json};
-use switchboard::integrations::{github, linear};
+use switchboard::integrations::{github, jira, linear, tracker};
 use switchboard::net::{self, ErrorKind};
 use switchboard::{requests, settings, util};
 
@@ -144,12 +144,16 @@ impl Env {
             "SWITCHBOARD_GITHUB_API",
             "SWITCHBOARD_GITHUB_GRAPHQL",
             "SWITCHBOARD_LINEAR_API",
+            "JIRA_SITE",
+            "JIRA_EMAIL",
+            "JIRA_API_TOKEN",
         ] {
             unset(var);
         }
         settings::reload_settings();
         github::forget_token();
         linear::forget_key();
+        jira::forget_token();
         Env { _lock: lock, home }
     }
 
@@ -894,7 +898,7 @@ fn a_linear_ticket() {
 #[test]
 fn an_attendee_s_photo_is_asked_of_linear_by_their_address() {
     let env = Env::new("photo-address");
-    env.settings(json!({ "linear": true }));
+    env.settings(json!({ "tracker": "linear" }));
     set("LINEAR_API_KEY", "lin_api_x");
     let fake = Fake::linear(
         "lin_api_x",
@@ -923,4 +927,196 @@ fn an_attendee_s_photo_is_asked_of_linear_by_their_address() {
         None,
         "no one by that address"
     );
+}
+
+// A Jira that answers as Jira Cloud does, for the issues and searches below.
+fn jira_answers(request: &http::Request) -> Option<Reply> {
+    let issue = |key: &str,
+                 summary: &str,
+                 category: &str,
+                 status: &str,
+                 resolution: Option<&str>| {
+        json!({ "id": "10001", "key": key, "fields": {
+            "summary": summary,
+            "status": { "name": status, "statusCategory": { "key": category } },
+            "resolution": resolution.map(|r| json!({ "name": r })),
+            "priority": { "name": "High" },
+            "updated": "2026-11-01T10:00:00.000+0000",
+            "assignee": { "accountId": "a1", "displayName": "Jo" },
+            "parent": { "key": "AB-1", "fields": { "summary": "Login", "issuetype": { "name": "Epic", "hierarchyLevel": 1 } } }
+        } })
+    };
+    let target = request.target.as_str();
+    let answer = match (request.method.as_str(), request.path()) {
+        ("GET", "/rest/api/3/myself") => json!({ "accountId": "a1" }),
+        ("GET", "/rest/api/3/issue/AB-2") => issue(
+            "AB-2",
+            "Fix the login",
+            "indeterminate",
+            "In Progress",
+            None,
+        ),
+        ("GET", "/rest/api/3/issue/AB-3") if target.contains("description") => {
+            json!({ "key": "AB-3", "fields": {
+            "summary": "Write it down", "status": { "name": "To Do", "statusCategory": { "key": "new" } },
+            "description": { "type": "doc", "content": [{ "type": "paragraph", "content": [
+                { "type": "text", "text": "Read " },
+                { "type": "text", "text": "this", "marks": [{ "type": "strong" }] }
+            ] }] },
+            "labels": ["web"], "issuetype": { "name": "Task", "hierarchyLevel": 0 },
+            "issuelinks": [{ "type": { "name": "Blocks", "outward": "blocks", "inward": "is blocked by" },
+                "outwardIssue": { "key": "AB-4", "fields": { "summary": "Ship it", "status": { "name": "Done" } } } }]
+        } })
+        }
+        ("GET", "/rest/api/3/issue/AB-3") => issue("AB-3", "Write it down", "new", "To Do", None),
+        ("GET", "/rest/api/3/issue/AB-3/comment") => {
+            json!({ "comments": [{ "id": "c1", "created": "2026-11-02T09:00:00.000+0000",
+            "author": { "displayName": "Ada" }, "body": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Looks right" }] }] } }] })
+        }
+        ("GET", "/rest/api/3/issue/AB-3/remotelink") => {
+            json!([{ "object": { "url": "https://example.com/spec", "title": "Spec" } }])
+        }
+        ("GET", "/rest/api/3/issue/AB-3/transitions") => json!({ "transitions": [
+            { "id": "31", "name": "Won't do", "to": { "name": "Won't Do", "statusCategory": { "key": "done" } } },
+            { "id": "41", "name": "Finish", "to": { "name": "Done", "statusCategory": { "key": "done" } } }
+        ] }),
+        ("POST", "/rest/api/3/issue/AB-3/transitions") => {
+            return Some(Reply::bytes(204, "text/plain", ""));
+        }
+        ("POST", "/rest/api/3/search/jql") => json!({ "isLast": true, "issues": [
+            issue("AB-2", "Fix the login", "indeterminate", "In Progress", None),
+            issue("AB-5", "Dropped", "done", "Done", Some("Won't Do")),
+            issue("AB-6", "Shipped", "done", "Done", Some("Done"))
+        ] }),
+        _ => return None,
+    };
+    Some(Reply::json(200, answer))
+}
+
+fn jira_env(name: &str, token: &str) -> (Env, http::Fake) {
+    let env = Env::new(name);
+    env.settings(json!({ "tracker": "jira" }));
+    let fake = http::Fake::start(
+        Service::Jira {
+            email: "me@acme.test".into(),
+            token: "tok".into(),
+        },
+        jira_answers,
+    );
+    set("JIRA_SITE", &fake.url);
+    set("JIRA_EMAIL", "me@acme.test");
+    set("JIRA_API_TOKEN", token);
+    (env, fake)
+}
+
+#[test]
+fn jira_answers_the_tracker_s_questions_in_linear_s_shape() {
+    let (_env, fake) = jira_env("jira", "tok");
+    let ticket = util::block_on(tracker::ticket("AB-2", "test"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(ticket.title, "Fix the login");
+    assert_eq!(ticket.state, "In Progress");
+    assert_eq!(ticket.url, format!("{}/browse/AB-2", fake.url));
+    assert_eq!(ticket.assignee.unwrap().name, "Jo");
+    assert_eq!(
+        fake.seen()[0].header("authorization").map(str::to_string),
+        Some(format!("Basic {}", http::base64(b"me@acme.test:tok")))
+    );
+    // One Jira hasn't is none, once the token is known to work.
+    assert_eq!(
+        util::block_on(tracker::ticket("AB-404", "test")).unwrap(),
+        None
+    );
+    assert!(fake.seen().iter().any(|r| r.path() == "/rest/api/3/myself"));
+
+    // Assigned: in Linear's shape, the canceled with their own time, since a
+    // minute ago.
+    let since = jiff::Timestamp::from_millisecond(util::now_ms() - 60_000)
+        .unwrap()
+        .to_string();
+    let assigned = util::block_on(tracker::assigned(&since, "test")).unwrap();
+    let ids: Vec<&str> = assigned
+        .iter()
+        .map(|i| i["identifier"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["AB-2", "AB-5", "AB-6"]);
+    assert_eq!(
+        assigned[0]["state"],
+        json!({ "name": "In Progress", "type": "started" })
+    );
+    assert_eq!(assigned[1]["state"]["type"], "canceled");
+    assert!(assigned[1]["completedAt"].is_null());
+    assert_eq!(assigned[2]["state"]["type"], "completed");
+    assert!(assigned[2]["canceledAt"].is_null());
+    assert_eq!(assigned[0]["priority"], 2);
+    assert_eq!(assigned[0]["project"]["name"], "Login");
+    let search = fake
+        .seen()
+        .into_iter()
+        .find(|r| r.path() == "/rest/api/3/search/jql")
+        .unwrap();
+    let jql = search.json()["jql"].as_str().unwrap().to_string();
+    assert!(jql.contains("statusCategoryChangedDate >= -"), "{jql}");
+    assert!(jql.ends_with("m) ORDER BY updated DESC"), "{jql}");
+
+    // The ticket view's detail: Markdown, comments, links and relations.
+    let detail = util::block_on(tracker::detail("AB-3", "test"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail["description"], "Read **this**");
+    assert_eq!(detail["labels"]["nodes"][0]["name"], "web");
+    assert_eq!(detail["comments"]["nodes"][0]["body"], "Looks right");
+    assert_eq!(detail["comments"]["nodes"][0]["user"]["name"], "Ada");
+    assert_eq!(
+        detail["attachments"]["nodes"][0],
+        json!({ "title": "Spec", "url": "https://example.com/spec" })
+    );
+    assert_eq!(detail["relations"]["nodes"][0]["type"], "Blocks");
+    assert_eq!(
+        detail["relations"]["nodes"][0]["relatedIssue"]["identifier"],
+        "AB-4"
+    );
+
+    // Closing: into Done, not Won't Do, then the transition made.
+    let done = util::block_on(tracker::done_state_of("AB-3", "test"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(done, ("AB-3".into(), false, "41".into(), "Done".into()));
+    assert!(util::block_on(tracker::close_ticket("AB-3", "41", "test")).unwrap());
+    let closed = fake
+        .seen()
+        .into_iter()
+        .rfind(|r| r.method == "POST" && r.path().ends_with("/transitions"))
+        .unwrap();
+    assert_eq!(closed.json(), json!({ "transition": { "id": "41" } }));
+    assert!(counted("Jira", "REST") >= 8);
+}
+
+#[test]
+fn a_jira_that_refuses_the_token_says_so_rather_than_that_nothing_is_there() {
+    let (_env, mut fake) = jira_env("jira-refused", "expired");
+    fake.expect_refusals();
+    let err = util::block_on(tracker::ticket("AB-2", "test")).unwrap_err();
+    assert_eq!(kind(&err), ErrorKind::Unauthorized);
+    assert!(err.to_string().contains("may have expired"), "{err}");
+    // An empty search is checked the same way, so a refused token isn't an
+    // empty board.
+    let err = util::block_on(tracker::assigned("2026-11-01T00:00:00Z", "test")).unwrap_err();
+    assert_eq!(kind(&err), ErrorKind::Unauthorized);
+}
+
+#[test]
+fn linear_is_not_asked_while_jira_is_the_tracker() {
+    let env = Env::new("jira-not-linear");
+    env.settings(json!({ "tracker": "jira" }));
+    set("LINEAR_API_KEY", "lin_api_x");
+    let err = util::block_on(linear::graphql(
+        "query { viewer { id } }",
+        json!({}),
+        "test",
+    ))
+    .unwrap_err();
+    assert_eq!(kind(&err), ErrorKind::Off);
+    assert_eq!(counted("Linear", "GraphQL"), 0);
 }

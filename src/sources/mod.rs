@@ -239,8 +239,13 @@ impl Sources {
 
 /// Whether a view is on: its service's setting and its own. The Landing
 /// view needs no service, since its landing queues are files; its merge
-/// queues are asked of GitHub only with the github setting on too.
+/// queues are asked of GitHub only with the github setting on too. The
+/// Inbox is Linear's, so it is on only with Linear as the ticket tracker.
 pub fn enabled(name: &str) -> bool {
+    use crate::integrations::tracker::{self, Tracker};
+    if name == INBOX && tracker::set() != Some(Tracker::Linear) {
+        return false;
+    }
     let (service, own) = match name {
         PRS => ("github", "pr_board"),
         CI => ("github", "view_ci"),

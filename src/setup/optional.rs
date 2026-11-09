@@ -8,7 +8,8 @@
 
 use serde_json::Value;
 
-use crate::integrations::{github, linear};
+use crate::integrations::tracker::{self, Tracker};
+use crate::integrations::{github, jira, linear};
 use crate::{day, paths, platform, relay, settings, util, views};
 
 /// One optional part: whether it is there, the line said of it, and its
@@ -43,7 +44,25 @@ pub fn all() -> Vec<Optional> {
             "GitHub, for M-v, M-d's base, the PRs and CI views and PR numbers in tab names: install GitHub's CLI (gh) and run gh auth login",
         ));
     }
-    if settings::is_on("tracker") {
+    if tracker::set() == Some(Tracker::Jira) {
+        all.push(line(
+            util::block_on(jira::has_credentials()),
+            "Jira (M-i, the Tickets view, ticket titles in tab names)",
+            "Jira, for M-i, the Tickets view and ticket titles in tab names: an API token from https://id.atlassian.com/manage-profile/security/api-tokens, stored with pbpaste | switchboard platform secret-set jira-api-token, and \"jiraSite\" and \"jiraEmail\" in ~/.config/switchboard/jira.json (or Settings, jira.json)",
+        ));
+        let project = util::read_json(paths::config_dir().join("jira.json"))
+            .and_then(|v| {
+                v.get("jiraProject")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .is_some_and(|t| !t.trim().is_empty());
+        all.push(line(
+            project,
+            "the Jira project /shape files tickets in",
+            "the Jira project /shape files tickets in: \"jiraProject\": \"<project key>\" in ~/.config/switchboard/jira.json (or Settings, jira.json)",
+        ));
+    } else if settings::is_on("tracker") {
         all.push(line(
             util::block_on(linear::api_key()).is_ok(),
             "Linear (M-i, the Tickets and Inbox views, ticket titles in tab names)",

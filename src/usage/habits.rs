@@ -462,8 +462,12 @@ fn off(value: &dyn Fn(&str) -> Option<Value>, key: &str) -> bool {
     value(key).is_some_and(|v| v == Value::Bool(false) || v == "off")
 }
 
-/// Whether a view is on, and its service with it.
+/// Whether a view is on, and its service with it. The Inbox is Linear's, on
+/// only with Linear as the ticket tracker, as `sources::enabled` has it.
 pub fn view_on(v: &View, value: &dyn Fn(&str) -> Option<Value>) -> bool {
+    if v.key == "view_inbox" && value("tracker").is_some_and(|t| t != "linear") {
+        return false;
+    }
     !off(value, v.key) && v.needs.is_none_or(|n| !off(value, n))
 }
 

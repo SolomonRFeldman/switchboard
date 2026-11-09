@@ -118,6 +118,24 @@ impl Kept {
 }
 
 impl Server {
+    /// Clears the Tickets view of cards from a tracker set before, so after
+    /// a switch they don't stay under the new tracker's error while it isn't
+    /// set up or fails, but go as it is asked.
+    fn drop_other_trackers_tickets(&mut self) {
+        let stale = self
+            .sources
+            .kept
+            .ticket_issues
+            .as_ref()
+            .is_some_and(|issues| issues.iter().any(tickets::from_another_tracker));
+        if stale {
+            self.sources.kept.ticket_issues = None;
+            if let Some(view) = self.sources.views.get_mut(TICKETS) {
+                view.items.clear();
+            }
+        }
+    }
+
     /// The sources' part of the server's tick.
     pub fn sources_tick(&mut self) {
         let now = Instant::now();
@@ -230,8 +248,12 @@ impl Server {
             }
             Answer::Tickets(result) => {
                 self.sources.schedule.done("tickets");
+                self.drop_other_trackers_tickets();
                 let view = self.sources.views.entry(TICKETS).or_default();
                 match result {
+                    // An answer from a tracker set before is dropped, as its
+                    // cards are.
+                    Ok(issues) if issues.iter().any(tickets::from_another_tracker) => {}
                     Ok(issues) => {
                         view.items =
                             tickets::board_from(&issues, &tabs, crate::settings::is_on("ux2"));
@@ -763,6 +785,7 @@ impl Server {
                 if !enabled(TICKETS) {
                     return false;
                 }
+                self.drop_other_trackers_tickets();
                 let now = util::now_ms();
                 tokio::spawn(async move { send(Answer::Tickets(tickets::fetch(now).await)) });
             }

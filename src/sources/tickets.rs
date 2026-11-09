@@ -1,13 +1,14 @@
 //! Mission control's ticket board, ported from lib/sidebar/ticketboard.js:
 //! the tickets assigned to you in the ticket tracker
 //! (`integrations::tracker`), as columns by where they stand (Todo, In
-//! progress, In review (a started state whose name says review), and Done in
-//! the last `DONE_DAYS`). Todo is by priority, urgent first, the rest most
-//! recently changed first, and each card names the tab working on its
-//! ticket, when a tab's name has it. With UX 2.0 a fifth group, Closed,
-//! holds the tickets canceled in the same days, which the board draws in a
-//! row under its columns; the tracker brings each ticket's description and
-//! estimate for the card and the pane beside the board.
+//! progress, In review (a started state whose name says review, or Jira's
+//! Pull Request), and Done in the last `DONE_DAYS`). Todo is by priority,
+//! urgent first, the rest most recently changed first, and each card names
+//! the tab working on its ticket, when a tab's name has it. With UX 2.0 a
+//! fifth group, Closed, holds the tickets canceled in the same days, which
+//! the board draws in a row under its columns; the tracker brings each
+//! ticket's description and estimate for the card and the pane beside the
+//! board.
 
 use std::sync::LazyLock;
 
@@ -29,7 +30,8 @@ pub fn columns(ux2: bool) -> &'static [&'static str] {
 pub const DONE_DAYS: i64 = 7;
 
 fn column_of(issue: &Value) -> &'static str {
-    static REVIEW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)review").unwrap());
+    static REVIEW: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)review|pull request").unwrap());
     match text(issue, "/state/type") {
         "completed" => "Done",
         "canceled" => "Closed",
@@ -94,6 +96,7 @@ pub fn item_of(issue: &Value, tabs: &[TabInfo]) -> Option<Item> {
         "estimate": issue.get("estimate").and_then(Value::as_f64),
         "description": text(issue, "/description"),
         "tab": tab.map(|t| t.index),
+        "tracker": issue.get("tracker"),
     }));
     item.time = ms_of(
         issue
@@ -125,12 +128,31 @@ pub fn board_from(issues: &[Value], tabs: &[TabInfo], ux2: bool) -> Vec<Item> {
     in_columns(columns(ux2), items)
 }
 
-/// Your assigned issues, as the tracker has them.
+/// Your assigned issues, as the tracker has them, each naming the tracker
+/// it came from (`tracker`), so a card still shown after the setting names
+/// another is never closed, worked on or shaped by its identifier there.
 pub async fn fetch(now_ms: i64) -> anyhow::Result<Vec<Value>> {
     let since = jiff::Timestamp::from_millisecond(now_ms - DONE_DAYS * 86_400_000)
         .map(|t| t.to_string())
         .unwrap_or_default();
-    tracker::assigned(&since, "sidebar: tickets").await
+    let from = tracker::asked()?.key();
+    let mut issues = tracker::assigned(&since, "sidebar: tickets").await?;
+    for issue in &mut issues {
+        issue["tracker"] = json!(from);
+    }
+    Ok(issues)
+}
+
+/// Whether a card (or issue) came from a tracker other than the one set
+/// now; one that names none (an Inbox notification's) didn't.
+pub fn from_another_tracker(data: &Value) -> bool {
+    moved(data.get("tracker").and_then(Value::as_str))
+}
+
+/// Whether `from`, the tracker a ticket was read from, is no longer the
+/// one set.
+pub fn moved(from: Option<&str>) -> bool {
+    from.is_some_and(|t| tracker::set().map(tracker::Tracker::key) != Some(t))
 }
 
 /// What closing a ticket from its menu takes, as `tracker::done_state_of`
@@ -151,6 +173,13 @@ pub async fn close_ticket(issue: &str, state: &str) -> anyhow::Result<bool> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_jira_pull_request_status_is_in_review() {
+        let started = |name: &str| json!({ "state": { "name": name, "type": "started" } });
+        assert_eq!(column_of(&started("Pull Request")), "In review");
+        assert_eq!(column_of(&started("In Review")), "In review");
+        assert_eq!(column_of(&started("In Progress")), "In progress");
+    }
     use crate::mux::TabId;
 
     fn issue(id: &str, priority: u64, name: &str, kind: &str, updated: &str) -> Value {

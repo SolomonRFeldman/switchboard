@@ -49,6 +49,13 @@ pub fn failed(view: &mut ViewData, err: &anyhow::Error, what: &str) {
             view.setup = Some(LINEAR.to_string());
             view.error = None;
         }
+        Some((ErrorKind::NoCredentials, "Jira")) => {
+            view.setup = Some(format!(
+                "{} Mission control picks it up within two minutes.",
+                crate::integrations::jira::SET_UP
+            ));
+            view.error = None;
+        }
         Some((ErrorKind::Unauthorized | ErrorKind::Off | ErrorKind::NoCredentials, _)) => {
             view.setup = Some(err.to_string());
             view.error = None;

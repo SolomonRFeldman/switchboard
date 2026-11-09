@@ -50,7 +50,7 @@ impl Server {
 
     /// The ticket a tab is named after, when its branch names none.
     fn ask_ticket_for_name(&mut self, client: ClientId, tab: TabId, dir: PathBuf, shaping: bool) {
-        let ask = Ask::new("Ticket", "Its ID, like ABC-123, or its Linear link.");
+        let ask = Ask::new("Ticket", "Its ID, like ABC-123, or its link.");
         self.open(
             client,
             Box::new(ask),
@@ -84,7 +84,13 @@ impl Server {
             self.set_tab_name(tab, &format!("Shaping: {id}"));
             return;
         }
-        self.say(Some(client), "Reaching out to Linear...");
+        self.say(
+            Some(client),
+            &format!(
+                "Reaching out to {}...",
+                crate::integrations::tracker::name()
+            ),
+        );
         let asked = id.clone();
         self.off_task(
             client,
@@ -101,12 +107,16 @@ impl Server {
                 }
                 Ok(_) => server.say(
                     Some(client),
-                    &format!("Linear has no title for {id}, so the tab was left as it was."),
+                    &format!(
+                        "{} has no title for {id}, so the tab was left as it was.",
+                        crate::integrations::tracker::name()
+                    ),
                 ),
                 Err(e) => server.say(
                     Some(client),
                     &format!(
-                        "Couldn't ask Linear about {id}, so the tab was left as it was.\n\n{e}"
+                        "Couldn't ask {} about {id}, so the tab was left as it was.\n\n{e}",
+                        crate::integrations::tracker::name()
                     ),
                 ),
             },

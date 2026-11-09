@@ -49,7 +49,7 @@ impl Source {
     pub fn name(self) -> &'static str {
         match self {
             Source::Notes => "Note",
-            Source::Linear => "Linear",
+            Source::Linear => crate::integrations::tracker::name(),
             Source::GitHub => "GitHub",
             Source::Slack => "Slack",
         }
