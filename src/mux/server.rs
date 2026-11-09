@@ -3079,8 +3079,8 @@ impl Server {
         }
         // A command of a service turned off in Settings does nothing but
         // say so once, as settings.sh bound every key tagged #github or
-        // #linear to the service's tip.
-        for service in ["github", "linear"] {
+        // #tracker to the service's tip.
+        for service in ["github", "tracker"] {
             if action.tags().contains(&service) && !crate::settings::is_on(service) {
                 self.service_off(id, service);
                 return;
@@ -4211,7 +4211,7 @@ impl Server {
                     && let Some(spare) = super::beside::spare_of(spread, area)
                 {
                     let pr = crate::settings::is_on("github") && self.tab_pr(s.current).is_some();
-                    let ticket = crate::settings::is_on("linear") && self.ticket_known(s.current);
+                    let ticket = crate::settings::is_on("tracker") && self.ticket_known(s.current);
                     let rows = super::beside::rows(pr, ticket);
                     let (keyed, last) = super::beside::lines(&self.bindings, &rows);
                     let hover = match c.header_hover {

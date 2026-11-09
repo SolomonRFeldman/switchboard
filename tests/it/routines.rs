@@ -20,7 +20,7 @@ fn set_up() -> (TestServer, TestClient, PathBuf) {
     let server = TestServer::start();
     common::write_settings(
         &server.home,
-        json!({"notifications": false, "tips": false, "github": false, "linear": false}),
+        json!({"notifications": false, "tips": false, "github": false, "tracker": "off"}),
     );
     // Each start a block: a line "---", then an argument a line. While
     // `claude-hold` is there, it waits.
@@ -218,7 +218,7 @@ fn a_run_still_going_when_the_server_starts_again_is_taken_up() {
     // Routines turned off meanwhile: the run is still seen to its end.
     common::write_settings(
         &server.home,
-        json!({"notifications": false, "tips": false, "github": false, "linear": false, "routines": false}),
+        json!({"notifications": false, "tips": false, "github": false, "tracker": "off", "routines": false}),
     );
     drop(client);
     server.restart();

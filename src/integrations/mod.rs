@@ -1,9 +1,10 @@
 //! The services Switchboard reads for you, over their own APIs through `net`:
-//! GitHub (`github`) and Linear (`linear`). Each finds its credentials the
-//! way a person already keeps them, refuses outright while its setting
-//! (`github`, `linear`) is off, so turning a service off in Settings means
-//! the workspace asks it nothing by itself, and turns its failures into
-//! `net::ServiceError`s a view can explain.
+//! GitHub (`github`) and the ticket tracker (`tracker`, which asks Linear,
+//! `linear`). Each finds its credentials the way a person already keeps
+//! them, refuses outright while its setting (`github`, `tracker`) is off, so
+//! turning a service off in Settings means the workspace asks it nothing by
+//! itself, and turns its failures into `net::ServiceError`s a view can
+//! explain.
 //!
 //! The settings are about what the workspace does on its own: its lookups,
 //! views and keys. A program you run yourself (`codex-review`, `wt`, `wtpr`,
@@ -17,6 +18,7 @@
 
 pub mod github;
 pub mod linear;
+pub mod tracker;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,9 +32,14 @@ use crate::{platform, settings, util};
 static RUN_BY_YOU: AtomicBool = AtomicBool::new(false);
 
 /// Marks this process as a program someone runs themselves, whose requests
-/// the `github` and `linear` settings don't stop.
+/// the `github` and `tracker` settings don't stop.
 pub fn run_by_you() {
     RUN_BY_YOU.store(true, Ordering::Relaxed);
+}
+
+/// Whether this process is a program someone runs themselves.
+pub(crate) fn is_run_by_you() -> bool {
+    RUN_BY_YOU.load(Ordering::Relaxed)
 }
 
 /// Fails with `ErrorKind::Off` while the on/off setting `key` is off, unless

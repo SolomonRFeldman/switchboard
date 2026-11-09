@@ -47,7 +47,7 @@ use super::color::{self, Rgb, Shade, Tint};
 use super::git::{self, GitPlace};
 use super::label;
 use crate::integrations::github::{self, Repo};
-use crate::integrations::linear;
+use crate::integrations::tracker;
 use crate::{net, settings};
 
 /// How long a directory's answer holds once it has a PR, and before.
@@ -75,7 +75,7 @@ const FORGET: Duration = Duration::from_secs(3600);
 pub struct Switches {
     /// `github`: PR numbers.
     pub github: bool,
-    /// `linear`: ticket titles.
+    /// `tracker`: ticket titles.
     pub linear: bool,
     /// `tab_lookups`: either of them in tab names.
     pub lookups: bool,
@@ -108,7 +108,7 @@ impl Switches {
         let on = |key: &str| all.iter().find(|o| o.key == key).is_none_or(|o| o.is_on());
         Switches {
             github: on("github"),
-            linear: on("linear"),
+            linear: on("tracker"),
             lookups: on("tab_lookups"),
             colors: on("accent_colors"),
             apart: on("tab_colors_apart"),
@@ -231,7 +231,7 @@ impl Ask {
                 }
             }
             Ask::Title { id } => {
-                let found = linear::ticket(&id, "tab name: ticket title")
+                let found = tracker::ticket(&id, "tab name: ticket title")
                     .await
                     .map(|t| t.map(|t| t.title))
                     .map_err(|e| e.to_string());
@@ -333,7 +333,7 @@ impl Names {
         // harmless: Linear has no such ticket, and the name is used as usual.
         let ticket = place
             .filter(|_| switches.tickets())
-            .and_then(|p| linear::ticket_in(&p.branch));
+            .and_then(|p| tracker::ticket_in(&p.branch));
         let title = ticket.as_ref().and_then(|id| {
             let known = self.titles.entry(id.clone()).or_insert(Known {
                 value: None,

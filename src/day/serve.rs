@@ -1054,7 +1054,7 @@ impl Server {
             self.day.standup_tried = ms;
             let parts = standup::Parts {
                 github: settings::is_on("github"),
-                linear: settings::is_on("linear"),
+                linear: settings::is_on("tracker"),
                 summary: settings::is_on("standup_summary"),
             };
             let tab_dirs = self.day_tab_dirs();

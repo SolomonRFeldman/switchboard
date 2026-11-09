@@ -15,7 +15,7 @@
 //! there is never written over, so it is yours to edit once written. Off the
 //! server's task, tried again every `STANDUP_RETRY_MS` while it fails. Only
 //! while the standup_note setting is on; GitHub's part only with github on,
-//! Linear's only with linear on. GitHub is asked over its API with your
+//! the tracker's only with the tracker on. GitHub is asked over its API with your
 //! token (`integrations::github`), where the JavaScript ran `gh`.
 
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ use jiff::{Timestamp, Zoned};
 use serde_json::{Value, json};
 
 use super::{Ask, AskOpts, Dirs, new_notes, write_new};
-use crate::integrations::{github, linear};
+use crate::integrations::{github, tracker};
 use crate::{net, util};
 
 pub const STANDUP_HOUR: i8 = 6;
@@ -69,11 +69,6 @@ const GITHUB: &str = "query($mine: String!, $reviewed: String!, $waiting: String
   reviewed: search(query: $reviewed, type: ISSUE, first: 50) { nodes { ... on PullRequest { number title url repository { nameWithOwner }
     reviews(last: 30) { nodes { author { login } submittedAt } } } } }
   waiting: search(query: $waiting, type: ISSUE, first: 20) { nodes { ... on PullRequest { number title url repository { nameWithOwner } } } } }";
-
-const LINEAR: &str = "query($since: DateTimeOrDuration!) {
-  changed: issues(first: 100, filter: { or: [{ assignee: { isMe: { eq: true } } }, { creator: { isMe: { eq: true } } }], updatedAt: { gte: $since } }) { nodes { identifier title url
-    history(first: 50) { nodes { createdAt fromState { name } toState { name } } } } }
-  started: issues(first: 50, filter: { assignee: { isMe: { eq: true } }, state: { type: { eq: \"started\" } } }) { nodes { identifier title url state { name } } } }";
 
 /// The commits you made in one repository on the last working day.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -401,12 +396,15 @@ pub async fn write_standup(
         );
     }
     if parts.linear {
-        let vars = json!({ "since": super::ical::iso(midnight(since, now)) });
-        match linear::graphql(LINEAR, vars, "standup note").await {
+        let since = super::ical::iso(midnight(since, now));
+        match tracker::standup(&since, "standup note").await {
             Ok(data) => fetched.linear = Some(data),
-            // No key: the note is written without Linear, as before.
+            // No key: the note is written without the tracker, as before.
             Err(e) if matches!(net::kind_of(&e), Some(net::ErrorKind::NoCredentials)) => {}
-            Err(e) => anyhow::bail!("Linear couldn't be read ({e}); trying again later"),
+            Err(e) => anyhow::bail!(
+                "{} couldn't be read ({e}); trying again later",
+                tracker::name()
+            ),
         }
     }
     let file = standup_file(&dirs.notes, now);

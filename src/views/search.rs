@@ -43,7 +43,7 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use super::conversation;
-use crate::integrations::{github, linear};
+use crate::integrations::{github, tracker};
 use crate::mission::pane_search;
 use crate::mux::{PaneId, TabId};
 use crate::{connector, settings};
@@ -335,7 +335,7 @@ pub fn available() -> Vec<Source> {
         .into_iter()
         .filter(|s| match s {
             Source::Tabs | Source::Notes => true,
-            Source::Linear => settings::is_on("linear"),
+            Source::Linear => settings::is_on("tracker"),
             Source::GitHub => settings::is_on("github"),
             Source::Slack => asks_slack(),
         })
@@ -697,22 +697,11 @@ pub fn notes(dir: &Path, query: &str) -> Vec<Found> {
         .collect()
 }
 
-/// Linear's issue search.
+/// The ticket tracker's search.
 pub async fn linear(query: &str) -> Result<Vec<Found>, String> {
-    let data = linear::graphql(
-        &format!(
-            "query($q: String!) {{ searchIssues(term: $q, first: {LIMIT}) {{ nodes {{ identifier title description url state {{ name }} }} }} }}"
-        ),
-        json!({ "q": query }),
-        SOURCE,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    let nodes = data
-        .pointer("/searchIssues/nodes")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let nodes = tracker::search(query, LIMIT, SOURCE)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(nodes
         .iter()
         .map(|t| {

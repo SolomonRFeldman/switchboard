@@ -180,7 +180,7 @@ impl Server {
 
     /// A command, from its key or the palette.
     pub fn extras_command(&mut self, client: ClientId, command: Command, pane: Option<PaneId>) {
-        for (tag, service) in [("github", "github"), ("linear", "linear")] {
+        for (tag, service) in [("github", "github"), ("tracker", "tracker")] {
             if command.tags().contains(&tag) && !settings::is_on(service) {
                 self.service_off(client, service);
                 return;

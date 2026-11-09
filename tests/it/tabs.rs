@@ -75,7 +75,7 @@ fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
     let server = TestServer::start();
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false}),
     );
     let work = server.dir.path().join("shop");
     repo(&work, "feature-x");
@@ -146,7 +146,7 @@ fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
     // With tab colors vivid, the stronger color from before.
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false, "tab_colors": "vivid"}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false, "tab_colors": "vivid"}),
     );
     let vivid = tabs::accent_color("shop | branch:main", Shade::Vivid);
     assert_ne!(vivid, main);
@@ -155,7 +155,7 @@ fn a_tab_in_a_repository_wears_its_name_and_color_and_a_given_name_wins() {
     // With project colors off, every tab is gray.
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false, "accent_colors": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false, "accent_colors": false}),
     );
     wait_tab(&server, "the gray", |t| t["color"] == "8a8a8a");
 }
@@ -165,7 +165,7 @@ fn a_tab_keeps_its_name_after_its_worktree_is_removed_and_in_the_main_clone() {
     let server = TestServer::start();
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false}),
     );
     let main = server.dir.path().join("app");
     repo(&main, "main");
@@ -231,7 +231,7 @@ fn a_tab_moved_by_hand_or_named_by_you_is_left_as_it_is() {
     let server = TestServer::start();
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false}),
     );
     let main = server.dir.path().join("app");
     repo(&main, "main");
@@ -334,7 +334,7 @@ fn m_shift_t_shows_the_tabs_whole_title_and_its_branch_and_copies_it() {
     // reopened the last closed tab.
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false, "reopen_tab_key": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false, "reopen_tab_key": false}),
     );
     let work = server.dir.path().join("shop");
     repo(&work, "feature-x");
@@ -464,7 +464,7 @@ fn the_tabs_command_names_each_panes_claude_and_its_address() {
     let server = TestServer::start();
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false}),
     );
     let mut client = server.attach(100, 30);
     client.wait_text("$");
@@ -513,7 +513,7 @@ fn a_tab_with_a_tab_dir_is_named_from_it_and_forgets_it_when_handed_over() {
     let server = TestServer::start();
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false}),
     );
     let main = server.dir.path().join("app");
     repo(&main, "main");
@@ -714,7 +714,7 @@ fn apart_by(a: &str, b: &str) -> i64 {
 #[test]
 fn each_tab_takes_a_hue_of_its_own_and_keeps_it() {
     let mut server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let work = server.dir.path().join("shop");
     repo(&work, "main");
     let work_dir = work.to_str().unwrap();
@@ -773,7 +773,7 @@ fn each_tab_takes_a_hue_of_its_own_and_keeps_it() {
     // With each tab's own hue off, the tabs of one directory share its color.
     settings(
         &server,
-        json!({"github": false, "linear": false, "tab_colors_apart": false}),
+        json!({"github": false, "tracker": "off", "tab_colors_apart": false}),
     );
     let home = tabs::accent_color("shop | branch:main", Shade::Soft).hex();
     let deadline = common::deadline(Duration::from_secs(15));
@@ -788,7 +788,7 @@ fn each_tab_takes_a_hue_of_its_own_and_keeps_it() {
 #[test]
 fn claude_s_statusline_draws_its_tab_s_hue() {
     let server = TestServer::start();
-    settings(&server, json!({"github": false, "linear": false}));
+    settings(&server, json!({"github": false, "tracker": "off"}));
     let work = server.dir.path().join("shop");
     repo(&work, "main");
     let work_dir = work.to_str().unwrap();

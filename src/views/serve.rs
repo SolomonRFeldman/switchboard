@@ -20,7 +20,7 @@
 //! the server's task and reports back with a `ViewsEvent`; what can't be
 //! done is said in a box (`say`), as gh-open.sh's box said why, since a key
 //! that does nothing reads as broken. A key of a service turned off in
-//! Settings shows its tip (`github_off`, `linear_off`) the first time, as
+//! Settings shows its tip (`github_off`, `tracker_off`) the first time, as
 //! settings.sh's binding did, and nothing after (`Server::act` checks
 //! every action's tags first).
 
@@ -33,7 +33,7 @@ use super::search::{self, Found, Source};
 use super::search_box::SearchBox;
 use super::shown::{self, Shown};
 use super::{Command, ViewsEvent, page, seen, ticket};
-use crate::integrations::{github, linear};
+use crate::integrations::{github, tracker};
 use crate::mux::server::{ClientId, Event, Server};
 use crate::mux::{Direction, PaneId, TabId};
 use crate::net::{self, ErrorKind};
@@ -105,7 +105,7 @@ fn rows(found: &[Shown]) -> Vec<PickItem> {
 impl Server {
     /// A view's command, from its key or the palette.
     pub fn view_command(&mut self, client: ClientId, command: Command) {
-        for (tag, service) in [("github", "github"), ("linear", "linear")] {
+        for (tag, service) in [("github", "github"), ("tracker", "tracker")] {
             if command.tags().contains(&tag) && !settings::is_on(service) {
                 self.service_off(client, service);
                 return;
@@ -326,7 +326,7 @@ impl Server {
         let branch = self
             .tab_path(tab)
             .and_then(|d| self.tab_names.names.branch(d))
-            .and_then(linear::ticket_in);
+            .and_then(tracker::ticket_in);
         branch.is_some()
             || self.tabs.get(&tab).is_some_and(|t| {
                 t.opts
@@ -514,7 +514,7 @@ impl Server {
         // No workspace written down: Linear says where the ticket is.
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match linear::ticket(&id, "M-l open ticket").await {
+            match tracker::ticket(&id, "M-l open ticket").await {
                 Ok(Some(t)) if !t.url.is_empty() => Server::open_link_later(&tx, client, t.url),
                 Ok(_) => Server::say_later(&tx, client, format!("Linear has no ticket {id}.")),
                 Err(e) => Server::say_later(&tx, client, format!("Can't open {id}.\n\n{e}")),
@@ -552,7 +552,7 @@ impl Server {
         }
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let said = match linear::ticket(&id, "copy the ticket's URL").await {
+            let said = match tracker::ticket(&id, "copy the ticket's URL").await {
                 Ok(Some(t)) if !t.url.is_empty() => {
                     let _ = tx.send(Event::Views(ViewsEvent::Copy {
                         client,
@@ -640,7 +640,7 @@ impl Server {
         );
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let said = match linear::project_url(&id, "open the ticket's project").await {
+            let said = match tracker::project_url(&id, "open the ticket's project").await {
                 Ok(Some(url)) => {
                     Server::open_link_later(&tx, client, url);
                     return;

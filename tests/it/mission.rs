@@ -28,7 +28,7 @@ fn settings(server: &TestServer, extra: Value) {
         "tips": false,
         "sidebar": false,
         "github": false,
-        "linear": false,
+        "tracker": "off",
         "view_calendar": false,
         "view_slack": false,
         "view_relay": false,
@@ -415,7 +415,7 @@ fn the_settings_view_changes_a_setting_in_the_settings_file() {
     loop {
         let saved: Value =
             serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap_or_default();
-        if saved.get("github").is_none() && saved["linear"] == false {
+        if saved.get("github").is_none() && saved["tracker"] == "off" {
             break;
         }
         assert!(Instant::now() < deadline, "not written: {saved}");
@@ -2022,7 +2022,7 @@ fn with_ux2_the_inbox_shows_each_in_its_ticket_and_its_menu_acts_on_it() {
     ]);
     settings(
         &server,
-        json!({"ux2": true, "linear": true, "view_inbox": true, "photos": false}),
+        json!({"ux2": true, "tracker": "linear", "view_inbox": true, "photos": false}),
     );
     let mut client = server.attach(194, 40);
     client.wait_text("$");
@@ -2808,7 +2808,7 @@ fn the_pane_beside_the_tickets_board_resizes_with_the_pane_keys_and_keeps_its_wi
     ]);
     settings(
         &server,
-        json!({"ux2": true, "linear": true, "photos": false}),
+        json!({"ux2": true, "tracker": "linear", "photos": false}),
     );
     let mut client = server.attach(200, 40);
     client.wait_text("$");
@@ -3343,7 +3343,7 @@ fn m_f_scoped_to_notes_asks_no_other_source() {
     ]);
     settings(
         &server,
-        json!({ "linear": true, "github": false, "search_slack": false }),
+        json!({ "tracker": "linear", "github": false, "search_slack": false }),
     );
     let notes = server.home.join("Notes");
     std::fs::create_dir_all(&notes).unwrap();
@@ -3408,7 +3408,7 @@ fn search_with_linear() -> (TestServer, TestClient, common::http::Fake) {
     ]);
     settings(
         &server,
-        json!({ "linear": true, "github": false, "search_slack": false }),
+        json!({ "tracker": "linear", "github": false, "search_slack": false }),
     );
     let mut client = server.attach(140, 36);
     client.wait_text("$");

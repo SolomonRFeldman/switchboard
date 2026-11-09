@@ -19,7 +19,7 @@ fn settings(extra: Value) -> String {
         "notifications": false,
         "tips": false,
         "github": false,
-        "linear": false,
+        "tracker": "off",
         "view_calendar": false,
         "view_slack": false,
         "view_relay": false,
