@@ -65,7 +65,7 @@ runs the workspace on made-up data, in a home of its own under `/tmp` that links
 | `M-Space` | Mission control: every tab as a card, the Work map, PRs, CI, tickets, your day, Settings |
 | `M-t` | New tab running Claude, in a directory you pick |
 | `M-j` | Find a tab by typing its name |
-| `M-F` | Search your notes, Linear, GitHub and Slack at once |
+| `M-F` | Search your notes, tickets, GitHub and Slack at once |
 | `M-s` | Into the sidebar and back out |
 | `M-c` | Into the pane running Claude in this tab |
 | `M-y` | Copy the latest reply of this tab's Claude |
@@ -77,7 +77,7 @@ runs the workspace on made-up data, in a home of its own under `/tmp` that links
 | `C-M-S-h` `C-M-S-j` `C-M-S-k` `C-M-S-l` | Move the pane's divider that way, growing or shrinking it (Ghostty, kitty) |
 | `M-[` `M-]`, `M-1` … `M-9` | Back or forward through the tabs you visited, or a tab by the number it keeps while open |
 | `M-w` | Close the pane, asking first when something runs in it |
-| `M-v` / `M-i` | The branch's PR description / its Linear ticket, in a pane to the right |
+| `M-v` / `M-i` | The branch's PR description / its ticket, in a pane to the right |
 | `M-d` | The branch's diff against its PR's base, in place of the pane, its changes told as a story, what isn't committed yet included, marked ● and listed last (`R` reads it again); `M-p`'s "Clear this tab's diff cache" makes the next one ask again |
 | `M-N` / `M-e` | Notes in its own tab / beside the pane you are in |
 | `M-b d` | Detach, leaving everything running; `switchboard` attaches again |

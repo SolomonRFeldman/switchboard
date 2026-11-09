@@ -189,6 +189,20 @@ pub async fn close_ticket(issue: &str, state: &str, source: &str) -> Result<bool
     }
 }
 
+/// Where the skills file a new ticket in the tracker set: `tracker` (its
+/// name), `site` (Jira's site, or the Linear workspace's page), `team` (the
+/// Linear team or Jira project key) and `labels`, never a key or token;
+/// `None` with the setting off.
+pub fn filing() -> Option<Value> {
+    let tracker = set()?;
+    let mut out = match tracker {
+        Tracker::Linear => linear::filing(),
+        Tracker::Jira => jira::filing(),
+    };
+    out["tracker"] = Value::from(tracker.name());
+    Some(out)
+}
+
 /// The ticket identifier a branch (or tab) name holds, in capitals.
 pub fn ticket_in(branch: &str) -> Option<String> {
     linear::ticket_in(branch)

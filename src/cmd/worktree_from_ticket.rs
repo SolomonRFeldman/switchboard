@@ -130,12 +130,17 @@ fn fetch_issue(key: &str, number: u64) -> Result<Issue, String> {
     })
 }
 
+/// Where the skills, and a session `wt` starts, read how to read and edit a
+/// ticket in the tracker set: the shape skill's guide, in Switchboard's
+/// plugin.
+const TRACKER_GUIDE: &str = "~/.local/share/switchboard/plugin/skills/shape/tracker.md";
+
 /// The prompt Claude starts with. The state goes in as a fact rather than
 /// something the session has to look up, keyed on its type, not its name: a
 /// workspace can call its completed state anything ("Shipped"), while the
 /// type is one of Linear's fixed set, whose closed ones are completed,
 /// canceled and duplicate. The clause is dropped if Linear gives no state.
-pub fn prompt_for(issue: &Issue, extra: &str) -> String {
+pub fn prompt_for(issue: &Issue, tracker: Option<&str>, extra: &str) -> String {
     let state_clause = issue
         .state
         .as_ref()
@@ -145,7 +150,15 @@ pub fn prompt_for(issue: &Issue, extra: &str) -> String {
         .state
         .as_ref()
         .is_some_and(|(_, kind)| matches!(kind.as_str(), "completed" | "canceled" | "duplicate"));
-    let mut prompt = format!("Work on ticket {}{state_clause}. ", issue.identifier);
+    // The tracker and its guide only while one is set: with the setting off
+    // the guide says to leave tickets out, though wt read this one.
+    let mut prompt = match tracker {
+        Some(tracker) => format!(
+            "Work on {tracker} ticket {}{state_clause}, reading and editing it as {TRACKER_GUIDE} says. ",
+            issue.identifier
+        ),
+        None => format!("Work on ticket {}{state_clause}. ", issue.identifier),
+    };
     if closed {
         prompt.push_str(
             "That state is closed, so before doing anything else tell me and confirm whether we want to reopen it; \
@@ -294,7 +307,7 @@ pub fn main(args: Vec<String>) -> ExitCode {
     if let Err(e) = worktree::link_local_settings(&root, &path) {
         return worktree::fail(&e.to_string());
     }
-    let prompt = prompt_for(&issue, &extra);
+    let prompt = prompt_for(&issue, tracker::set().map(tracker::Tracker::name), &extra);
     // Read by the `wt` function: line 1 the worktree, line 2 the prompt, so
     // the function and the standalone path can't drift apart.
     if let Some(cd_file) = &given.cd_file
@@ -330,15 +343,21 @@ mod tests {
             branch_name: None,
             state: Some(("Shipped".into(), "completed".into())),
         };
-        let prompt = prompt_for(&issue, "start small");
+        let prompt = prompt_for(&issue, Some("Linear"), "start small");
         assert!(prompt.starts_with(
-            "Work on ticket ENG-1, which is in the \"Shipped\" state. That state is closed"
+            "Work on Linear ticket ENG-1, which is in the \"Shipped\" state, reading and editing it as ~/.local/share/switchboard/plugin/skills/shape/tracker.md says. That state is closed"
         ));
         assert!(prompt.ends_with("Also, from me for this ticket: start small"));
         let open = Issue {
             state: None,
             ..issue
         };
-        assert!(prompt_for(&open, "").starts_with("Work on ticket ENG-1. Before changing"));
+        assert!(
+            prompt_for(&open, None, "").starts_with("Work on ticket ENG-1. Before changing"),
+            "with the tracker off, no guide that would leave the ticket out"
+        );
+        assert!(prompt_for(&open, Some("Jira"), "").starts_with(
+            "Work on Jira ticket ENG-1, reading and editing it as ~/.local/share/switchboard/plugin/skills/shape/tracker.md says. Before changing"
+        ));
     }
 }

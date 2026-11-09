@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 This is Switchboard's own copy, for repositories that have none. Before anything else, run `switchboard skill-path wtn`: if it prints a path other than this file's, read that file and follow it instead, with the same arguments, and stop reading here.
 
-Hand this tab over to `wtn` for one checklist item of a note: `/wt`'s counterpart for work kept in a note rather than a Linear ticket. This session ends, and in its place `wtn` (`switchboard worktree-from-note`) makes a worktree on a branch named after the item (`note/<slug>`), moves the pane's shell into it, and starts a new Claude session there, told the item, its plan, and to land it with `/queue-and-clean` when done, as `switchboard landing` says for the repository: straight on the default branch, or through a PR.
+Hand this tab over to `wtn` for one checklist item of a note: `/wt`'s counterpart for work kept in a note rather than a ticket in Linear or Jira. This session ends, and in its place `wtn` (`switchboard worktree-from-note`) makes a worktree on a branch named after the item (`note/<slug>`), moves the pane's shell into it, and starts a new Claude session there, told the item, its plan, and to land it with `/queue-and-clean` when done, as `switchboard landing` says for the repository: straight on the default branch, or through a PR.
 
 The conversation does not carry over. The item and its plan are the hand-off.
 

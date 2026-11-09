@@ -486,6 +486,29 @@ pub async fn close_ticket(issue: &str, state: &str, source: &str) -> Result<bool
         == Some(true))
 }
 
+/// Where the skills file a new ticket: the workspace's page, the team and
+/// the labels from linear.json, never the key.
+pub fn filing() -> Value {
+    let mine = util::read_json_object(paths::config_dir().join("linear.json"));
+    let text = |key: &str| {
+        mine.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let labels = mine
+        .get("linearLabels")
+        .cloned()
+        .filter(Value::is_array)
+        .unwrap_or_else(|| json!([]));
+    json!({
+        "site": text("linearWorkspace").map(|w| format!("https://linear.app/{w}")),
+        "team": text("linearTeam"),
+        "labels": labels,
+    })
+}
+
 fn nodes(data: &Value, path: &str) -> Vec<Value> {
     data.pointer(path)
         .and_then(Value::as_array)

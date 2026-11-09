@@ -370,13 +370,19 @@ impl Server {
             .and_then(|c| c.overlays.find::<Mission>())
             .and_then(|m| m.current().map(|v| v.slug()));
         if shown.as_deref() != Some(slug.as_str()) {
-            self.mission_note(
-                client,
+            // The Inbox is Linear's: with another tracker set, that is why.
+            let not_linear = slug == "inbox"
+                && crate::integrations::tracker::set()
+                    != Some(crate::integrations::tracker::Tracker::Linear);
+            let why = if not_linear {
+                "The Inbox is Linear's, and Linear isn't the ticket tracker set in Settings, so mission control has no view of it.".to_string()
+            } else {
                 format!(
                     "{} is off in Settings, so mission control has no view of it.",
                     view.title()
-                ),
-            );
+                )
+            };
+            self.mission_note(client, why);
         }
     }
 

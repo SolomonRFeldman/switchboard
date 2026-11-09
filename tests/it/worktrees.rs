@@ -961,7 +961,7 @@ fn a_ticket_gets_a_worktree_on_linears_branch_name_its_prompt_saying_its_closed_
     );
     assert!(
         prompt.starts_with(
-            "Work on ticket ENG-42, which is in the \"Done\" state. That state is closed"
+            "Work on Linear ticket ENG-42, which is in the \"Done\" state, reading and editing it as ~/.local/share/switchboard/plugin/skills/shape/tracker.md says. That state is closed"
         ),
         "{prompt}"
     );
