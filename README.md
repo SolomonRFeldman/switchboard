@@ -24,7 +24,7 @@ It is opinionated: the defaults are how it is meant to be used, and Settings (`M
 - To install a release, OpenSSH's `ssh-keygen`, 8.1 or later, which the installer checks the release's signature with. macOS and most Linux distributions ship it; a minimal Linux image may need its OpenSSH client package.
 - A terminal with 24-bit color. On a Mac, Option has to act as Alt, since every `M-` key is Alt: in Ghostty, `macos-option-as-alt = true`; in iTerm2, Settings, Profiles, Keys, "Left Option key: Esc+"; in Terminal, Settings, Profiles, Keyboard, "Use Option as Meta key". `switchboard setup` offers to set it in Ghostty, Terminal and iTerm2, and in Ghostty to send the Cmd keys Notes' easy mode reads. Pictures in notes need a terminal that draws kitty's graphics protocol, such as Ghostty or kitty, or one that draws sixel and says so when asked (Windows Terminal 1.22 or later, foot, WezTerm, xterm with sixel), for which the workspace draws them as sixel by default; for one that draws sixel but doesn't say, set Settings' "Image protocol" to sixel.
 
-Nothing else has to be installed. GitHub, Linear, the calendar, Slack and Codex each turn on a part of it when you have them; the [guide](docs/guide.md) says what each needs.
+Nothing else has to be installed. GitHub, Linear or Jira, the calendar, Slack and Codex each turn on a part of it when you have them; the [guide](docs/guide.md) says what each needs.
 
 ## Install
 
@@ -64,7 +64,7 @@ curl -fsSL https://raw.githubusercontent.com/cquinones100/switchboard/main/insta
 - **Your `~/.claude/settings.json` stays yours.** Nothing of Switchboard's goes in it; setup only takes out the statusline and hooks an earlier version added there. Each skill allows the commands it runs itself, and the plugin lets the few Switchboard commands its instructions use run without asking, and keeps Claude from reading `.env` files or running `git pull`.
 - **Without the plugin** (Settings' "Load Switchboard as a plugin" off, Claude Code older than 2.1.280, or your organization's managed settings setting `disableSideloadFlags`), setup puts the hooks, statusline, permissions, an import of Switchboard's part of CLAUDE.md and the skills in `~/.claude` instead, for every Claude of yours. An install of an earlier version is asked once which it wants.
 - **Your terminal and tools:** it offers to make Option act as Alt in a Mac's terminal (in Ghostty, with Notes' easy mode's Cmd keys), and to tidy what a tmux version of Switchboard left; lazygit in a pane's place gets Switchboard's settings at launch, layered under your config, which is never written.
-- **What's missing:** it lists the optional parts not set up (the GitHub and Linear sign-ins, Chrome, ffmpeg, Codex and the rest), each with what it is for.
+- **What's missing:** it lists the optional parts not set up (the GitHub and Linear or Jira sign-ins, Chrome, ffmpeg, Codex and the rest), each with what it is for.
 
 As a plugin, a Claude session outside Switchboard runs none of its hooks, so the Slack relay hears only of sessions in the workspace.
 
