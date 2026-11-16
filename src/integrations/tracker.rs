@@ -222,12 +222,41 @@ pub fn id_in_link(text: &str) -> Option<String> {
     ID.captures(text).map(|m| m[1].to_ascii_uppercase())
 }
 
-/// The identifier when `url` is a ticket's page in the tracker set: a
-/// Linear issue's on linear.app, or with Jira a page on its site (its
-/// origin, `jira::site`), so a link elsewhere that only looks like one is
-/// left to be read as a page.
+/// The identifier when `url` is a ticket's page in the tracker asked
+/// (`asked`): a Linear issue's on linear.app, or with Jira a page on its
+/// site (its origin, `jira::site`), so a link elsewhere that only looks like
+/// one is left to be read as a page.
 pub fn own_link(url: &str) -> Option<String> {
-    own_link_of(url, set(), jira::site().as_deref())
+    // Jira's site is read only while Jira is asked, so nothing else (a
+    // unit test included) reads jira.json for it.
+    match asked().ok() {
+        Some(Tracker::Jira) => own_link_of(url, Some(Tracker::Jira), jira::site().as_deref()),
+        set => own_link_of(url, set, None),
+    }
+}
+
+/// Whether `text` is a ticket's link (`LINK_ID`) but not one to a ticket in
+/// the tracker asked (`own_link`): its ID would name another ticket there,
+/// so it is refused rather than asked about.
+pub fn foreign_link(text: &str) -> bool {
+    text.starts_with("http") && id_in_link(text).is_some() && own_link(text).is_none()
+}
+
+/// What is said of a link `foreign_link` refuses: with Jira set but no
+/// site to tell its links by, that Jira isn't set up; with the tracker off,
+/// that it is, a program you run reading Linear's links then (`asked`).
+pub fn foreign_link_says(text: &str) -> String {
+    match set() {
+        None if super::is_run_by_you() => format!(
+            "{text} isn't a Linear link, and the ticket tracker is off in Settings: what you run yourself then reads Linear's"
+        ),
+        None => format!("{text} is a ticket's link, and the ticket tracker is off in Settings"),
+        Some(Tracker::Jira) if jira::site().is_none() => jira::SET_UP.to_string(),
+        Some(tracker) => format!(
+            "{text} isn't a link to a ticket in {}, the ticket tracker set in Settings",
+            tracker.name()
+        ),
+    }
 }
 
 /// `own_link` with the tracker set and Jira's site given, reading nothing.
@@ -249,6 +278,20 @@ pub fn own_link_of(url: &str, set: Option<Tracker>, jira_site: Option<&str>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_link_to_the_other_tracker_s_ticket_is_foreign() {
+        // Linear is the tracker in the unit tests (their settings are the
+        // defaults).
+        assert!(foreign_link("https://acme.atlassian.net/browse/AB-2"));
+        assert!(!foreign_link("https://linear.app/acme/issue/AB-2/a-title"));
+        assert!(!foreign_link("AB-2"), "an ID is no link");
+        assert!(!foreign_link("https://example.com/a-page"));
+        assert!(
+            foreign_link_says("https://acme.atlassian.net/browse/AB-2")
+                .contains("isn't a link to a ticket in Linear")
+        );
+    }
 
     #[test]
     fn a_ticket_link_of_either_tracker_names_its_ticket() {

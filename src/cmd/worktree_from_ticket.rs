@@ -257,6 +257,9 @@ pub fn main(args: Vec<String>) -> ExitCode {
         [path, ticket, ..] => (path.as_str(), ticket.as_str()),
         [] => return usage(),
     };
+    if crate::integrations::tracker::foreign_link(ticket) {
+        return worktree::fail(&crate::integrations::tracker::foreign_link_says(ticket));
+    }
     if !worktree::looks_like_ticket(ticket) {
         return usage();
     }

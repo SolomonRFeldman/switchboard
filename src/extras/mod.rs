@@ -392,27 +392,37 @@ pub enum TicketTyped {
 
 /// What was typed for a ticket, read with `branch_ticket` (the ticket the
 /// pane's branch names) for a bare number; what is wrong with it, in words,
-/// when it is none of them.
+/// when it is none of them. A link is taken only from the tracker set
+/// (`tracker::own_link`), since its ID is asked of that tracker.
 pub fn ticket_typed(text: &str, branch_ticket: Option<&str>) -> Result<TicketTyped, String> {
-    static URL: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^https://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-[0-9]+)([/?#].*)?$")
-            .unwrap()
-    });
-    // A Jira ticket's page (`/browse/<ID>`, or a board's
-    // `?selectedIssue=<ID>`) on an https site.
-    static JIRA_URL: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^https://[^/?#]+(?:/[^?#]*?)?(?:/browse/|[?&]selectedIssue=)([A-Za-z][A-Za-z0-9]*-[0-9]+)(?:[/?#&].*)?$")
-            .unwrap()
-    });
+    use crate::integrations::tracker;
+    ticket_typed_with(
+        text,
+        branch_ticket,
+        tracker::own_link,
+        tracker::foreign_link_says,
+    )
+}
+
+/// `ticket_typed`, with `own` giving a link's ticket when it is the
+/// tracker's and nothing when it isn't, and `refused` what is said then.
+fn ticket_typed_with(
+    text: &str,
+    branch_ticket: Option<&str>,
+    own: impl Fn(&str) -> Option<String>,
+    refused: impl Fn(&str) -> String,
+) -> Result<TicketTyped, String> {
     static ID: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
     static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?([0-9]+)$").unwrap());
     let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-    if let Some(m) = URL.captures(&text).or_else(|| JIRA_URL.captures(&text)) {
-        return Ok(TicketTyped::Url {
-            id: m[1].to_uppercase(),
-            url: text.clone(),
-        });
+    // A ticket's link of either tracker, as `tracker::foreign_link` reads
+    // one, is the tracker set's or refused.
+    if text.starts_with("http") && crate::integrations::tracker::id_in_link(&text).is_some() {
+        return match own(&text) {
+            Some(id) => Ok(TicketTyped::Url { id, url: text }),
+            None => Err(refused(&text)),
+        };
     }
     if ID.is_match(&text) {
         return Ok(TicketTyped::Id(text.to_uppercase()));
@@ -460,6 +470,7 @@ pub fn prefill(clipboard: Option<&str>, takes: impl Fn(&str) -> bool) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::integrations::tracker::{self, Tracker};
 
     #[test]
     fn names_round_trip_and_only_three_have_keys() {
@@ -543,41 +554,75 @@ mod tests {
         assert_eq!(pr_typed("twelve"), None);
     }
 
+    /// `ticket_typed` with `set` as the tracker and Jira's site
+    /// `https://acme.atlassian.net`.
+    fn ticket_typed(
+        text: &str,
+        branch_ticket: Option<&str>,
+        set: Tracker,
+    ) -> Result<TicketTyped, String> {
+        let own =
+            |url: &str| tracker::own_link_of(url, Some(set), Some("https://acme.atlassian.net"));
+        let refused = |url: &str| format!("{url} isn't a link to a ticket in {}", set.name());
+        super::ticket_typed_with(text, branch_ticket, own, refused)
+    }
+
     #[test]
     fn a_ticket_is_a_link_an_id_or_a_number_in_the_branchs_team() {
+        use Tracker::{Jira, Linear};
         assert_eq!(
-            ticket_typed("abc-12", None),
+            ticket_typed("abc-12", None, Linear),
             Ok(TicketTyped::Id("ABC-12".into()))
         );
         assert_eq!(
-            ticket_typed("#34", Some("ENG-1")),
+            ticket_typed("#34", Some("ENG-1"), Jira),
             Ok(TicketTyped::Id("ENG-34".into()))
         );
         assert!(
-            ticket_typed("34", None)
+            ticket_typed("34", None, Linear)
                 .unwrap_err()
                 .contains("like ABC-34")
         );
+        let linear = "https://linear.app/team/issue/abc-9/a-title";
         assert_eq!(
-            ticket_typed("https://linear.app/team/issue/abc-9/a-title", None),
+            ticket_typed(linear, None, Linear),
             Ok(TicketTyped::Url {
-                url: "https://linear.app/team/issue/abc-9/a-title".into(),
+                url: linear.into(),
                 id: "ABC-9".into()
             })
         );
         for jira in [
             "https://acme.atlassian.net/browse/ab-9",
             "https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-9",
+            "https://acme.atlassian.net/jira/software/projects/AB/boards/1?quickFilter=12&selectedIssue=AB-9",
+            "https://acme.atlassian.net/issues/?jql=project%3DAB&selectedIssue=AB-9",
         ] {
             assert_eq!(
-                ticket_typed(jira, None),
+                ticket_typed(jira, None, Jira),
                 Ok(TicketTyped::Url {
                     url: jira.into(),
                     id: "AB-9".into()
                 })
             );
+            // Its ID would be asked of Linear, a ticket of its own there.
+            assert!(
+                ticket_typed(jira, None, Linear)
+                    .unwrap_err()
+                    .contains("isn't a link to a ticket in Linear")
+            );
         }
-        assert!(ticket_typed("what", None).unwrap_err().starts_with("Not a"));
+        for other in [linear, "https://other.atlassian.net/browse/AB-9"] {
+            assert!(
+                ticket_typed(other, None, Jira)
+                    .unwrap_err()
+                    .contains("isn't a link to a ticket in Jira")
+            );
+        }
+        assert!(
+            ticket_typed("what", None, Linear)
+                .unwrap_err()
+                .starts_with("Not a")
+        );
     }
 
     #[test]

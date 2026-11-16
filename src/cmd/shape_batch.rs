@@ -73,6 +73,8 @@ pub fn items_of(inputs: &[String]) -> Vec<String> {
 }
 
 pub fn main(args: Vec<String>) -> ExitCode {
+    // Run by you, as the shape it starts is: a link is read as shape reads it.
+    crate::integrations::run_by_you();
     if args.iter().any(|a| a == "--help" || a == "-h") {
         return usage();
     }
@@ -98,6 +100,14 @@ pub fn main(args: Vec<String>) -> ExitCode {
     let items = items_of(&inputs);
     if items.is_empty() {
         return usage();
+    }
+    // Another tracker's link names another ticket by its ID here, so none
+    // opens a tab.
+    if let Some(link) = items
+        .iter()
+        .find(|i| crate::integrations::tracker::foreign_link(i))
+    {
+        return fail(&crate::integrations::tracker::foreign_link_says(link));
     }
     let cwd = std::env::current_dir()
         .map(|d| d.to_string_lossy().into_owned())

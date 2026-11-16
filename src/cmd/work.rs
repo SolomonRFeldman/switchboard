@@ -40,7 +40,7 @@ use crate::cmd::work_item_box::{
     self, Chosen, Context as BoxContext, PlanChip, Repo as BoxRepo, WorkItemBox,
 };
 use crate::cmd::{work_recent, worktree_from_note};
-use crate::integrations::github;
+use crate::integrations::{github, tracker};
 use crate::mux::keys::Action;
 use crate::mux::server::{ClientId, Event, Opened, Server};
 use crate::mux::{PaneId, TabId};
@@ -246,9 +246,10 @@ fn expand(typed: &str) -> PathBuf {
 
 // ── What is asked for ───────────────────────────────────────────────────────
 
-/// Tickets separated by commas, spaces or both, each an ID or a Linear issue
-/// URL, in capitals and each once; the first piece that isn't one, as the
-/// error. Only an ID ever reaches a tab's command.
+/// Tickets separated by commas, spaces or both, each an ID or a link to a
+/// ticket in the tracker set (`worktree::ticket_from`), in capitals and each
+/// once; what is wrong with the first piece that isn't one, as the error.
+/// Only an ID ever reaches a tab's command.
 pub fn parse_tickets(text: &str) -> Result<Vec<String>, String> {
     let mut tickets = Vec::new();
     for token in text.split(|c: char| c == ',' || c.is_whitespace()) {
@@ -256,7 +257,13 @@ pub fn parse_tickets(text: &str) -> Result<Vec<String>, String> {
             continue;
         }
         let ticket = worktree::ticket_from(token)
-            .ok_or_else(|| token.to_string())?
+            .ok_or_else(|| {
+                if tracker::foreign_link(token) {
+                    tracker::foreign_link_says(token)
+                } else {
+                    format!("Not a ticket ID or ticket link: {token}")
+                }
+            })?
             .to_uppercase();
         if !tickets.contains(&ticket) {
             tickets.push(ticket);
@@ -648,10 +655,7 @@ impl Server {
             let tickets = match parse_tickets(&picked.value) {
                 Ok(t) => t,
                 Err(bad) => {
-                    server.say(
-                        Some(client),
-                        &format!("Not a ticket ID or ticket link: {bad}"),
-                    );
+                    server.say(Some(client), &bad);
                     return;
                 }
             };
@@ -1784,10 +1788,7 @@ impl Server {
                 Ok(t) if !t.is_empty() => t,
                 Ok(_) => return,
                 Err(bad) => {
-                    server.say(
-                        Some(client),
-                        &format!("Not a ticket ID or ticket link: {bad}"),
-                    );
+                    server.say(Some(client), &bad);
                     return;
                 }
             };
@@ -1836,7 +1837,17 @@ mod tests {
             parse_tickets("abc-1, https://linear.app/x/issue/ABC-2/t ABC-1"),
             Ok(vec!["ABC-1".to_string(), "ABC-2".to_string()])
         );
-        assert_eq!(parse_tickets("ABC-1 $(rm)"), Err("$(rm)".to_string()));
+        assert_eq!(
+            parse_tickets("ABC-1 $(rm)"),
+            Err("Not a ticket ID or ticket link: $(rm)".to_string())
+        );
+        // Linear is the tracker in the unit tests, so a Jira link's ID
+        // would name another ticket.
+        assert!(
+            parse_tickets("ABC-1 https://acme.atlassian.net/browse/AB-2")
+                .unwrap_err()
+                .contains("isn't a link to a ticket in Linear")
+        );
         assert_eq!(tickets_on("not a ticket"), "");
         assert_eq!(tickets_on(" ENG-4 "), "ENG-4");
     }

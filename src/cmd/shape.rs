@@ -41,8 +41,8 @@ fn usage() -> ExitCode {
     ExitCode::from(1)
 }
 
-/// The ticket a word names: an issue URL's, or the word when it is an
-/// identifier.
+/// The ticket a word names: a link's to a ticket in the tracker set, or
+/// the word when it is an identifier (`worktree::ticket_from`).
 pub fn ticket_in(word: &str) -> Option<String> {
     worktree::ticket_from(word)
 }
@@ -90,6 +90,8 @@ pub fn asked(args: &[String], carry_on: bool) -> Asked {
 }
 
 pub fn main(args: Vec<String>) -> ExitCode {
+    // Run by you, as wt is: a ticket's link is read as wt reads it.
+    crate::integrations::run_by_you();
     let help = |a: Option<&String>| a.is_some_and(|a| a == "--help" || a == "-h");
     // Help only in place of the ticket or idea: further on, it is direction.
     if help(args.first()) || (args.first().is_some_and(|a| a == "--continue") && help(args.get(1)))
@@ -107,6 +109,14 @@ pub fn main(args: Vec<String>) -> ExitCode {
         .collect();
     if rest.is_empty() {
         return usage();
+    }
+    // Another tracker's link names another ticket by its ID here.
+    if let Some(link) = rest[0]
+        .split_whitespace()
+        .next()
+        .filter(|w| crate::integrations::tracker::foreign_link(w))
+    {
+        return fail(&crate::integrations::tracker::foreign_link_says(link));
     }
     let asked = asked(&rest, flag_at.is_some());
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));

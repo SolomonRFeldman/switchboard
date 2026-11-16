@@ -48,7 +48,13 @@ pub fn tickets_of(args: &[String]) -> Result<Vec<String>, String> {
         .filter(|t| !t.is_empty())
     {
         let ticket = worktree::ticket_from(token)
-            .ok_or_else(|| format!("could not parse a ticket identifier from \"{token}\""))?
+            .ok_or_else(|| {
+                if crate::integrations::tracker::foreign_link(token) {
+                    crate::integrations::tracker::foreign_link_says(token)
+                } else {
+                    format!("could not parse a ticket identifier from \"{token}\"")
+                }
+            })?
             .to_uppercase();
         if !tickets.contains(&ticket) {
             tickets.push(ticket);
@@ -58,6 +64,8 @@ pub fn tickets_of(args: &[String]) -> Result<Vec<String>, String> {
 }
 
 pub fn main(args: Vec<String>) -> ExitCode {
+    // Run by you, as the wt it starts is: a link is read as wt reads it.
+    crate::integrations::run_by_you();
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         return usage();
     }

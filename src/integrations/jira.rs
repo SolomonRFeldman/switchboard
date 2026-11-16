@@ -64,10 +64,16 @@ struct ConfigRead {
 }
 
 /// jira.json, read again only when it has changed, since every ticket's
-/// link is made from its site and a board fetch makes a few hundred.
+/// link is made from its site and a board fetch makes a few hundred. In
+/// the library's own unit tests, whose home is yours, a file that isn't
+/// there, as `settings::settings_file` is.
 fn config_file() -> serde_json::Map<String, Value> {
     static LAST: Mutex<Option<ConfigRead>> = Mutex::new(None);
-    let path = crate::files::file("jira.json");
+    let path = if cfg!(test) {
+        PathBuf::from("/nonexistent/switchboard-unit-tests/jira.json")
+    } else {
+        crate::files::file("jira.json")
+    };
     let stamp = std::fs::metadata(&path)
         .and_then(|m| Ok((m.modified()?, m.len())))
         .ok();

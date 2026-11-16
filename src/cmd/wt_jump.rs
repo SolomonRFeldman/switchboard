@@ -389,6 +389,13 @@ pub fn main(args: Vec<String>) -> ExitCode {
         String::new()
     };
 
+    // Another tracker's link isn't read as words to search for.
+    if let Some(link) = positional
+        .first()
+        .filter(|t| crate::integrations::tracker::foreign_link(t))
+    {
+        return fail(&crate::integrations::tracker::foreign_link_says(link));
+    }
     let described = describe(panes);
     let (matched, label, create, targeted) = match positional.first() {
         Some(target) => match matches_for(target, described) {

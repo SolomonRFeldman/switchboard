@@ -124,6 +124,8 @@ pub fn matches(target: &Target, w: &Worktree, root: &Path) -> bool {
 }
 
 pub fn main(args: Vec<String>) -> ExitCode {
+    // Run by you, as wt is: a ticket's link is read as wt reads it.
+    crate::integrations::run_by_you();
     let given = match Given::parse(&args, &[]) {
         Ok(g) => g,
         Err(_) => return worktree::fail("--cd-file requires a path"),
@@ -141,7 +143,12 @@ pub fn main(args: Vec<String>) -> ExitCode {
     if given.help || given.positional.len() != 1 {
         return usage();
     }
-    let target = parse_target(&given.positional[0]);
+    // Another tracker's link isn't read as a branch.
+    let input = &given.positional[0];
+    if crate::integrations::tracker::foreign_link(input) {
+        return worktree::fail(&crate::integrations::tracker::foreign_link_says(input));
+    }
+    let target = parse_target(input);
     let root = match worktree::repo_root() {
         Ok(root) => root,
         Err(e) => return worktree::fail(&e.to_string()),

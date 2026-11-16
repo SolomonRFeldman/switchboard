@@ -580,8 +580,8 @@ pub fn set_upstream(root: &Path, branch: &str, remote: &str, remote_branch: &str
 // The one reading of a ticket and a PR as someone gives one (a word typed,
 // a link pasted, an item's link), which `shape`, `shape-batch`, M-p's work
 // box and mission control's menus use too: a ticket's identifier in any
-// case, alone; a ticket from any URL's `/issue/`, `/browse/` or
-// `selectedIssue=` (`tracker::LINK_ID`); a PR's URL, alone, with
+// case, alone; a ticket from a link to it in the tracker set
+// (`tracker::own_link`), never another tracker's; a PR's URL, alone, with
 // a path, query or fragment after its number allowed. Finding one inside
 // other text (a branch's leading ticket, a link to shorten in a line) is a
 // different question, asked where it is.
@@ -589,7 +589,8 @@ pub fn set_upstream(root: &Path, branch: &str, remote: &str, remote_branch: &str
 /// A ticket's identifier, alone, in any case.
 pub static TICKET_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-\d+$").unwrap());
-/// A Linear or Jira ticket link (`tracker::LINK_ID`), any host.
+/// A Linear or Jira ticket link (`tracker::LINK_ID`), any host: which
+/// tracker's it is is `tracker::own_link`'s to say.
 pub static ISSUE_URL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(crate::integrations::tracker::LINK_ID).unwrap());
 /// A PR's URL, alone: its owner, name and number.
@@ -602,16 +603,19 @@ pub static PR_URL: LazyLock<Regex> = LazyLock::new(|| {
 /// A PR's number, alone, with or without its `#`.
 pub static PR_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?(\d+)$").unwrap());
 
-/// Whether the text is a Linear ticket: its identifier or an issue URL.
+/// Whether the text is a ticket: its identifier or a link to it
+/// (`ticket_from`).
 pub fn looks_like_ticket(input: &str) -> bool {
-    ISSUE_URL.is_match(input) || TICKET_ID.is_match(input)
+    ticket_from(input).is_some()
 }
 
-/// The ticket's identifier as written (`abc-123` stays so), from an
-/// identifier or an issue URL.
+/// The ticket's identifier, from an identifier as written (`abc-123` stays
+/// so) or a link to a ticket in the tracker asked (`tracker::own_link`, in
+/// capitals). A link to another tracker's ticket is none, since its ID would
+/// be asked of the wrong one (`tracker::foreign_link` says why).
 pub fn ticket_from(input: &str) -> Option<String> {
-    if let Some(m) = ISSUE_URL.captures(input) {
-        return Some(m[1].to_string());
+    if ISSUE_URL.is_match(input) {
+        return crate::integrations::tracker::own_link(input);
     }
     TICKET_ID.is_match(input).then(|| input.to_string())
 }
@@ -1049,6 +1053,8 @@ mod tests {
     fn every_reader_of_a_ticket_or_pr_takes_the_same_inputs() {
         use crate::cmd::{shape, shape_batch, work};
         let linear = "https://linear.app/w/issue/ENG-5/title";
+        // Not Linear's, the tracker in the unit tests, so its ID would name
+        // another ticket there.
         let elsewhere = "https://example.com/x/issue/ENG-5";
         let pr = "https://github.com/o/r/pull/7";
         // Each input, the ticket it names and whether it is a PR's URL.
@@ -1057,7 +1063,7 @@ mod tests {
             ("abc-12", Some("abc-12"), false),
             ("abc-12 and more", None, false),
             (linear, Some("ENG-5"), false),
-            (elsewhere, Some("ENG-5"), false),
+            (elsewhere, None, false),
             (pr, None, true),
             ("https://github.com/o/r/pull/7/files", None, true),
             ("https://github.com/o/r/pull/7?x=1", None, true),
