@@ -506,13 +506,13 @@ impl Action {
             Action::ContinueShaping => "Continue shaping Linear tickets, each in a new tab".into(),
             Action::ShapeNote => "Shape a note's checklist items as Linear tickets".into(),
             Action::ShapeNewTicket => {
-                "Shape a new Linear ticket from what you type, in a new tab".into()
+                "Shape a new ticket from what you type, in a new tab".into()
             }
             Action::PrImage => {
                 "View the branch's PR description as an image, as GitHub draws it, in place of this pane".into()
             }
             Action::TicketImage => {
-                "View the branch's Linear ticket as an image, as the PR image shows a PR, in place of this pane".into()
+                "View the branch's ticket as an image, as the PR image shows a PR, in place of this pane".into()
             }
             Action::MissionControl => "Open or close mission control".into(),
             Action::FindTab => "Search and jump to a tab".into(),
@@ -804,7 +804,7 @@ impl Action {
             Action::ShapeNote => &["notes", "linear", "shape"],
             Action::ShapeNewTicket => &["linear", "ticket", "shape"],
             Action::PrImage => &["github", "pr", "panes"],
-            Action::TicketImage => &["linear", "ticket", "panes"],
+            Action::TicketImage => &["linear", "jira", "ticket", "panes"],
             Action::MissionControl => &["sidebar", "overview", "tabs"],
             Action::FindTab => &["tabs", "navigate", "find"],
             Action::ReviveWorktree => &["tabs", "claude", "reopen"],

@@ -145,6 +145,12 @@ pub fn text_of(name: &str, key: Option<&str>) -> Option<Vec<String>> {
             "Its keys do nothing until it is on".into(),
             format!("again: {palette}, then Settings."),
         ],
+        "jira_off" => vec![
+            "Jira is off in Settings.".into(),
+            String::new(),
+            "Its keys do nothing until it is on".into(),
+            format!("again: {palette}, then Settings."),
+        ],
         // tip.sh pointed at `setup.sh terminal`, which set the terminal's
         // Option key; with no setup of the terminal now, it says where.
         "option-alt" => vec![

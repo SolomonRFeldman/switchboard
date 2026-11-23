@@ -2062,9 +2062,11 @@ fn from_your_work(messages: &[Said], look: &Look, w: usize) -> Vec<Vec<Run>> {
             .and_then(|i| i.data.get("state").and_then(Value::as_str))
             .unwrap_or("")
             .to_string();
-        let linear = Ticket::Linear(id.clone());
+        // A Slack message names an ID alone, so a tab on it in either tracker.
+        let (linear, jira) = (Ticket::Linear(id.clone()), Ticket::Jira(id.clone()));
         let tab = look.tabs.iter().find(|t| {
             t.ticket.as_ref() == Some(&linear)
+                || t.ticket.as_ref() == Some(&jira)
                 || crate::views::ticket::id_in_name(&t.ticket_name).as_deref() == Some(id.as_str())
         });
         rows.push((id, title, state, tab));

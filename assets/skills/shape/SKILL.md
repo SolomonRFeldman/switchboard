@@ -1,7 +1,7 @@
 ---
 name: shape
-description: Shape new work with the user, filed where the repository keeps its work (`switchboard tickets`) - a Linear ticket, a GitHub issue, or a note's checklist item with its plan note. Reads the code first, checks for work that already covers it, drafts it in the usual form, and files it once the user approves. Given an existing Linear ticket, asks whether to run a review loop on it or keep shaping it. Hands off to /wt afterwards.
-argument-hint: "[--notes | --github | --linear] [idea, or ticket ID or URL and what to do with it]"
+description: Shape new work with the user, filed where the repository keeps its work (`switchboard tickets`) - a Linear or Jira ticket, a GitHub issue, or a note's checklist item with its plan note. Reads the code first, checks for work that already covers it, drafts it in the usual form, and files it once the user approves. Given an existing Linear or Jira ticket, asks whether to run a review loop on it or keep shaping it. Hands off to /wt afterwards.
+argument-hint: "[--notes | --github | --linear | --jira] [idea, or ticket ID or URL and what to do with it]"
 disable-model-invocation: true
 allowed-tools:
   - Bash(switchboard skill-path *)
@@ -17,6 +17,13 @@ allowed-tools:
   - mcp__claude_ai_Linear__list_teams
   - mcp__claude_ai_Linear__list_issue_statuses
   - mcp__claude_ai_Linear__get_user
+  - Bash(switchboard tracker *)
+  - mcp__claude_ai_Atlassian_MCP__getAccessibleAtlassianResources
+  - mcp__claude_ai_Atlassian_MCP__getJiraIssue
+  - mcp__claude_ai_Atlassian_MCP__searchJiraIssuesUsingJql
+  - mcp__claude_ai_Atlassian_MCP__listJiraIssueComments
+  - mcp__claude_ai_Atlassian_MCP__discover
+  - mcp__claude_ai_Atlassian_MCP__executeRead
 ---
 
 # Shape
@@ -25,24 +32,24 @@ This is Switchboard's own copy, for repositories that have none. Before anything
 
 Turn a rough idea into work someone can pick up and build: clear on the problem, grounded in the code as it is, honest about scope, and filed where the repository keeps its work, so `/wt` and autopilot find it. The `switchboard shape` command starts a session with this skill; it also works in a session that is already running, and Notes' M-Enter in "Add an item" opens a tab running `/shape --notes <the item>`.
 
-Arguments: a description of the problem or idea, or, with no source or `--linear`, a Linear ticket ID or URL (`ABC-123`, or a link with `/issue/ABC-123/` in it) to work on an existing ticket, after an optional source (`--notes`, `--github` or `--linear`, see "Where it goes"). Text after a ticket (and after `--continue`, when that is there) is the user's direction for this shaping, such as what to change or look into: keep it in mind throughout, and let it decide between a review loop and shaping where it says which. With neither, ask what the work is about. Given a ticket, read it first and then ask what to do with it (see "Given a ticket" below).
+Arguments: a description of the problem or idea, or, with no source, `--linear` or `--jira`, a Linear or Jira ticket ID or URL (`ABC-123`; a Linear link with `/issue/ABC-123/` in it; a Jira one with `/browse/ABC-123` or a board's `?selectedIssue=ABC-123`; or `jira:ABC-123`, as Switchboard passes a Jira ticket) to work on an existing ticket, after an optional source (`--notes`, `--github`, `--linear` or `--jira`, see "Where it goes"). Text after a ticket (and after `--continue`, when that is there) is the user's direction for this shaping, such as what to change or look into: keep it in mind throughout, and let it decide between a review loop and shaping where it says which. With neither, ask what the work is about. Given a ticket, read it first and then ask what to do with it (see "Given a ticket" below).
 
 ## Where it goes
 
 Settle the source before anything else but naming the tab, and ask nothing about it:
 
-- A source in the arguments wins: `--notes`, `--github` or `--linear`, taken off before the rest is read.
-- Else run `switchboard tickets`, whose first line is where the repository keeps its work, repos.json's `tickets`: `github` (its issues), `linear`, or `notes` (a note's checklist, with a plan note each). It has no default: when the command fails (the key isn't set, or outside a repository), stop, telling the user what it printed on stderr, which says how to set it; nothing is filed anywhere.
+- A source in the arguments wins: `--notes`, `--github`, `--linear` or `--jira`, taken off before the rest is read.
+- Else run `switchboard tickets`, whose first line is where the repository keeps its work, repos.json's `tickets`: `github` (its issues), `linear`, `jira`, or `notes` (a note's checklist, with a plan note each). It has no default: when the command fails (the key isn't set, or outside a repository), stop, telling the user what it printed on stderr, which says how to set it; nothing is filed anywhere.
 - For a GitHub issue, `switchboard tickets` is run whichever way the source was settled, `--github` included: a second line `autopilot-label <label>` names the label autopilot takes this repository's issues by (repos.json's `issueLabel`); with no such line, or when the command fails after `--github`, autopilot doesn't take them.
-- With no source flag, a Linear ticket ID or URL leading the arguments is Linear's, whatever the repository keeps, so it needs no `switchboard tickets` and isn't stopped by one that fails. After `--notes` or `--github`, everything is the description, a leading ticket ID included (`ABC-12 follow-up: retry the upload` is a note's item or an issue, not that ticket).
+- With no source flag, a ticket leading the arguments is a ticket to work on: a link is its site's tracker's (linear.app's Linear, an Atlassian site's Jira), `jira:ABC-12` Jira's, and an ID alone Jira's when `switchboard tickets` prints `jira`, else Linear's, whatever else the repository keeps, so only an ID alone needs `switchboard tickets` and none is stopped by one that fails. After `--notes` or `--github`, everything is the description, a leading ticket ID included (`ABC-12 follow-up: retry the upload` is a note's item or an issue, not that ticket).
 
-Then follow that source's section: "Linear" for `linear`, "GitHub issues" for `github`, "A note's item" for `notes`. "Ground rules" and "Name the tab" hold for all three.
+Then follow that source's section: "Linear or Jira" for `linear` and `jira`, "GitHub issues" for `github`, "A note's item" for `notes`. "Ground rules" and "Name the tab" hold for all of them.
 
 ## Ground rules
 
 - Read only, but for what the source's last step files. Do not edit, create, or delete files in the repository, and do not commit, branch, or push. Shaping ends with filed work, not a change; `/wt` starts the work.
 - Answer what the code can answer yourself. Ask the user about intent, priority, and scope, not about how the code works today.
-- Nothing is written to Linear or GitHub until the user approves a draft.
+- Nothing is written to Linear, Jira or GitHub until the user approves a draft.
 
 ## Name the tab
 
@@ -56,13 +63,15 @@ switchboard set @tab_name 'Shaping ABC-123: Show which phase is active'
 
 This sets the same `@tab_name` that renaming the tab in `M-p` and `switchboard shape` set, and the tab takes the name at once. If it fails, carry on: a name is no reason to stop.
 
-## Linear
+## Linear or Jira
+
+The ticket is in Linear or Jira, the tracker the source settled. Before anything else, read [tracker.md](tracker.md) beside this file and settle which one, as it says; then every step below that says "the tracker" means that one, with the words that file maps for it (a Linear team is a Jira project, a Linear project a Jira epic, a sub-issue a sub-task).
 
 ### Given a ticket
 
-When the argument names an existing ticket, fetch it and its comments with the Linear connector before anything else. If it doesn't exist or can't be read, say so and stop. Name the tab for it (see "Name the tab"). When `--continue` follows the ticket (as `shape --continue`, `shape-batch --continue` and the palette's "Continue shaping Linear tickets" pass it), give the two-line summary below and carry straight on as "Continue shaping it", without asking. Otherwise give a two-line summary of where it stands (its title, state, and whether it already has a problem statement, an approach and acceptance criteria) and ask which of these to do, with `AskUserQuestion`:
+When the argument names an existing ticket, fetch it and its comments from the tracker before anything else. If it doesn't exist or can't be read, say so and stop. Name the tab for it (see "Name the tab"). When `--continue` follows the ticket (as `shape --continue`, `shape-batch --continue` and the palette's "Continue shaping tickets" pass it), give the two-line summary below and carry straight on as "Continue shaping it", without asking. Otherwise give a two-line summary of where it stands (its title, state, and whether it already has a problem statement, an approach and acceptance criteria) and ask which of these to do, with `AskUserQuestion`:
 
-- **Run a review loop on it.** Run `/review-loop ticket <ID>`, the review loop's ticket mode, which has Codex review the ticket's text against the code as it is (see that skill's `references/ticket-mode.md`). Use it when the ticket looks ready and you want it checked before anyone builds it. If this repository has a `review-loop` of its own with no ticket mode, say so and continue shaping instead. The loop ends asking whether to save its edits to the ticket; once it has, ask whether to keep shaping it by continuing below from step 6. Nothing is written to Linear without approval, as always.
+- **Run a review loop on it.** Run `/review-loop ticket <ID>`, the review loop's ticket mode, which has Codex review the ticket's text against the code as it is (see that skill's `references/ticket-mode.md`). Use it when the ticket looks ready and you want it checked before anyone builds it. If this repository has a `review-loop` of its own with no ticket mode, say so and continue shaping instead. The loop ends asking whether to save its edits to the ticket; once it has, ask whether to keep shaping it by continuing below from step 6. Nothing is written to the tracker without approval, as always.
 - **Continue shaping it.** Carry on with the steps below, refining this ticket rather than drafting a new one. Use it when the ticket is still rough, or the user wants to change its scope.
 
 Put the one the ticket's state suggests first, marked as recommended: a review loop for a ticket that already reads as complete, shaping for one that doesn't.
@@ -73,30 +82,30 @@ The notes action (M-p's, which splits a note's items as `switchboard shape-batch
 
 When there are sub-items, ask first, before anything else but naming the tab, with `AskUserQuestion`, how to organise them:
 
-- **A project:** "<item>" becomes a Linear project, and each sub-item an issue in it.
-- **A ticket with sub-issues:** "<item>" becomes a ticket, and each sub-item a sub-issue of it.
+- **A project:** "<item>" becomes a Linear project (a Jira epic), and each sub-item a ticket in it.
+- **A ticket with sub-issues:** "<item>" becomes a ticket, and each sub-item a sub-issue (a Jira sub-task) of it.
 
 Then run the steps for the item and for each sub-item together: step 2 checks each one for a ticket that already covers it (and, for a project, for a project that already covers the item), and a sub-item one covers is offered as that sub-item rather than drafted again. Step 7 drafts all of them at once, the project or parent first, and step 8 creates the project or parent, then each sub-item in it or under it, linking the ones that already existed instead of copying them. An item that names a ticket ID is checked against that ticket first.
 
 ### Steps
 
-1. **Settle the team.** Read `linearTeam` (a team key such as `ABC`) and `linearLabels` (an array of label names) from `~/.config/switchboard/linear.json`, the file `wt` already reads its Linear key from. If `linearTeam` is missing, take the team of the ticket being refined, or ask, and suggest adding it to that file. Keep team names and keys out of this repository: it is public.
+1. **Settle the team.** Run `switchboard tracker config`: its `team` is the team key (Linear) or project key (Jira) to file in, such as `ABC`, and `labels` the labels for a new ticket. They come from `linearTeam` and `linearLabels` in `~/.config/switchboard/linear.json`, or `jiraProject` and `jiraLabels` in `jira.json`, both in Switchboard's Settings under Linear and Jira. If the team or project is missing, take the one of the ticket being refined, or ask, and suggest adding it to that file. Keep team names and keys out of this repository: it is public.
 
-2. **Check whether a ticket already covers it.** Given a description rather than a ticket, search Linear first, before reading any code: open tickets in the team, and ones closed in the last 90 days, by the description's key words. A ticket covers it when it is about the same change, not merely the same area. If one or more do, show each (its ID, title, state and link, and a line on why it matches) and ask with `AskUserQuestion` whether to resume shaping one of them, with an option per ticket, up to three, and **Shape a new ticket** last. Resuming one makes it the ticket being refined: fetch it and its comments, name the tab for it (see "Name the tab"), and carry on from step 3 as "Continue shaping it" would, without asking the "Given a ticket" question. If nothing covers it, say so in a line and go on. Shaping several items at once, as `shape-batch` and the notes action do, each session checks its own item.
+2. **Check whether a ticket already covers it.** Given a description rather than a ticket, search the tracker first, before reading any code: open tickets in the team, and ones closed in the last 90 days (tracker.md has the JQL for Jira), by the description's key words. A ticket covers it when it is about the same change, not merely the same area. If one or more do, show each (its ID, title, state and link, and a line on why it matches) and ask with `AskUserQuestion` whether to resume shaping one of them, with an option per ticket, up to three, and **Shape a new ticket** last. Resuming one makes it the ticket being refined: fetch it and its comments, name the tab for it (see "Name the tab"), and carry on from step 3 as "Continue shaping it" would, without asking the "Given a ticket" question. If nothing covers it, say so in a line and go on. Shaping several items at once, as `shape-batch` and the notes action do, each session checks its own item.
 
-3. **Learn the team's ticket shape.** Read three or four recent tickets from that team with the Linear connector, preferring ones that were built and closed. Note their headings and conventions (acceptance criteria, labels) and use them, but the user's own rules for tickets in `~/.claude/CLAUDE.md` ("PRs and Linear tickets") win where they differ: business logic first, a diagram for a pipeline, implementation details last and brief.
+3. **Learn the team's ticket shape.** Read three or four recent tickets from that team, preferring ones that were built and closed. Note their headings and conventions (acceptance criteria, labels) and use them, but the user's own rules for tickets in `~/.claude/CLAUDE.md` (a section such as "PRs and Linear tickets", whichever tracker) win where they differ: business logic first, a diagram for a pipeline, implementation details last and brief.
 
 4. **Understand the problem in the code.** Find where the behaviour lives, how it works now, and what a change would touch. Name the files and functions you looked at, so the draft points at real places. When refining an existing ticket, read it and its comments first, and check whether anything it assumes has changed since it was written.
 
-5. **Look for related tickets.** With the code understood, search Linear again for open and recently closed tickets that overlap with this or that it depends on, which step 2's search for the same work can't find. If one turns out to cover it after all, say so and ask whether to refine that one instead of opening another.
+5. **Look for related tickets.** With the code understood, search the tracker again for open and recently closed tickets that overlap with this or that it depends on, which step 2's search for the same work can't find. If one turns out to cover it after all, say so and ask whether to refine that one instead of opening another.
 
 6. **Ask only what is left.** Usually a few questions about intent and scope: what the user wants to be true afterwards, and what is deliberately out. Keep them to what changes the ticket.
 
-7. **Draft.** Show the full ticket, as "PRs and Linear tickets" in `~/.claude/CLAUDE.md` says: a title that says what changes, then the business logic (what changes and why, answering what a teammate would later ask), a diagram for a pipeline or multi-step flow, acceptance criteria, what is out of scope, and last the implementation in a few words, linking to the code on GitHub rather than describing it. Use step 3's headings and conventions where they don't conflict. Note related tickets as links rather than copying them in. Then wait for the user's approval or edits. Revise until they approve.
+7. **Draft.** Show the full ticket, as the user's rules for tickets in `~/.claude/CLAUDE.md` say: a title that says what changes, then the business logic (what changes and why, answering what a teammate would later ask), a diagram for a pipeline or multi-step flow, acceptance criteria, what is out of scope, and last the implementation in a few words, linking to the code on GitHub rather than describing it. Use step 3's headings and conventions where they don't conflict. Note related tickets as links rather than copying them in. Then wait for the user's approval or edits. Revise until they approve.
 
-8. **Write it to Linear.** Once the user approves the draft, create the ticket in the team, with `linearLabels` if set, or update the ticket being refined. For a note item with sub-items, create the project (in the team) or the parent ticket first, then each sub-item as an issue in that project or a sub-issue of that ticket, as "A checklist item from a note" says. Link the related tickets from step 5. Name the tab for a ticket just created, or again if the title changed (see "Name the tab"). Reply with the ticket ID and URL.
+8. **Write it to the tracker.** Once the user approves the draft, create the ticket in the team, with its labels if set, or update the ticket being refined, as tracker.md's "Writing" says. For a note item with sub-items, create the project (in the team) or the parent ticket first, then each sub-item as an issue in that project or a sub-issue of that ticket, as "A checklist item from a note" says. Link the related tickets from step 5. Name the tab for a ticket just created, or again if the title changed (see "Name the tab"). Reply with the ticket ID and URL.
 
-9. **Review the ticket.** Right after writing it, run `/review-loop ticket <ID>` on it, the review loop's ticket mode, a ticket refined as much as one created, without asking: the user set this up in this skill, so it counts as asking for the loop by name. It reads the ticket from Linear and ends asking whether to save its edits there, as ticket mode always does. For a note item with sub-items, review the project or parent and each sub-item, one loop each. If the repository has a `review-loop` of its own with no ticket mode, say so and skip it. Then offer `/wt <ID>` to start the work in this tab.
+9. **Review the ticket.** Right after writing it, run `/review-loop ticket <ID>` on it, the review loop's ticket mode, a ticket refined as much as one created, without asking: the user set this up in this skill, so it counts as asking for the loop by name. It reads the ticket from its tracker and ends asking whether to save its edits there, as ticket mode always does. For a note item with sub-items, review the project or parent and each sub-item, one loop each. If the repository has a `review-loop` of its own with no ticket mode, say so and skip it. Then offer `/wt <ID>` to start the work in this tab.
 
 ## GitHub issues
 
@@ -106,9 +115,9 @@ The issue goes on `origin`'s repository, which is public for an open-source proj
 
 2. **Learn the shape of its issues.** Read three or four of the repository's recent issues (`gh issue view <number>`), preferring ones that were built and closed. Note their headings and conventions and use them, but the user's own rules for tickets in `~/.claude/CLAUDE.md` ("PRs and Linear tickets") win where they differ.
 
-3. **Understand the problem in the code**, **look for related issues**, and **ask only what is left**, as the Linear steps 4 to 6 say, with issues in place of tickets.
+3. **Understand the problem in the code**, **look for related issues**, and **ask only what is left**, as the Linear or Jira steps 4 to 6 say, with issues in place of tickets.
 
-4. **Draft.** Show the full issue as the Linear step 7 drafts a ticket: its title, `BUG: ` and what is broken or `FEAT: ` and what to build when the repository's issues are titled so, and its body, which autopilot and `/wt` build from as its plan. Link the related issues by their URLs. Then wait for the user's approval or edits. Revise until they approve.
+4. **Draft.** Show the full issue as the Linear or Jira step 7 drafts a ticket: its title, `BUG: ` and what is broken or `FEAT: ` and what to build when the repository's issues are titled so, and its body, which autopilot and `/wt` build from as its plan. Link the related issues by their URLs. Then wait for the user's approval or edits. Revise until they approve.
 
 5. **Write it out.** Once approved, write the body to `issue.md` and the title to `title.txt` in your scratchpad directory.
 
@@ -120,7 +129,7 @@ The issue goes on `origin`'s repository, which is public for an open-source proj
 
    Name the tab for it (see "Name the tab") and reply with its number and URL.
 
-7. **Review the issue.** As the Linear step 9 says, with the issue in place of the ticket: run `/review-loop ticket <number>`, which ends asking whether to save its edits to the issue. Then offer `/wt #<number>` to start the work in this tab.
+7. **Review the issue.** As the Linear or Jira step 9 says, with the issue in place of the ticket: run `/review-loop ticket <number>`, which ends asking whether to save its edits to the issue. Then offer `/wt #<number>` to start the work in this tab.
 
 ## A note's item
 

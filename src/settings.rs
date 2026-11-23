@@ -319,6 +319,7 @@ pub fn settings_file() -> PathBuf {
 pub const COMPUTER: &[&str] = &[
     "github",
     "linear",
+    "jira",
     "view_slack",
     "view_calendar",
     "meeting_notes",
@@ -351,6 +352,7 @@ pub fn is_computer(key: &str) -> bool {
 pub const SERVICES: &[(&str, Option<&str>)] = &[
     ("github", None),
     ("linear", None),
+    ("jira", None),
     ("view_slack", Some("Slack")),
     ("view_calendar", Some("Google Calendar")),
     ("meeting_notes", Some("Fathom")),
@@ -363,6 +365,7 @@ pub fn default_here(key: &str) -> Option<&'static str> {
     Some(match key {
         "github" => "off until gh signs in here",
         "linear" => "off until a Linear key is stored here",
+        "jira" => "off until a Jira token is stored here",
         "view_slack" => "off until Slack answers here",
         "view_calendar" => "off until your calendar is read here",
         "meeting_notes" => "off until Fathom's notes are written here",
@@ -401,6 +404,12 @@ const DEFAULT_BEFORE: &[(&str, bool)] = &[
     ("autopilot", true),
     ("view_relay", true),
 ];
+
+/// The service settings added since the carry-over (`carry_over`), which
+/// no older build read: left unset on every computer, so each is off until
+/// it works there.
+#[cfg(test)]
+const NEW_SINCE_CARRIED: &[&str] = &["jira"];
 
 /// This computer's own settings file: `settings_file` unless your files
 /// come from a repository, then the one in `~/.config/switchboard`.
@@ -722,9 +731,10 @@ pub fn connector_worked(service: &str) {
 
 /// The services a sign-in on this computer shows are used here, read from
 /// small files and the environment alone, so the server can look once a
-/// minute: gh signed in, a Linear key in the environment or linear.json,
-/// a Chrome with profiles. A Linear key in the Keychain is found as it is
-/// stored (`switchboard platform secret-set`) or first read.
+/// minute: gh signed in, a Linear key or Jira token in the environment or
+/// linear.json or jira.json, a Chrome with profiles. A Linear key or Jira
+/// token in the Keychain is found as it is stored (`switchboard platform
+/// secret-set`) or first read.
 pub fn found_here() -> Vec<&'static str> {
     let env = |name: &str| std::env::var(name).is_ok_and(|v| !v.trim().is_empty());
     // Where gh keeps its sign-in, as gh looks for it.
@@ -744,6 +754,11 @@ pub fn found_here() -> Vec<&'static str> {
             .get("linearApiKey")
             .and_then(Value::as_str)
             .is_some_and(|k| !k.trim().is_empty());
+    let jira = env("JIRA_API_TOKEN")
+        || util::read_json_object(crate::files::file("jira.json"))
+            .get("jiraApiToken")
+            .and_then(Value::as_str)
+            .is_some_and(|k| !k.trim().is_empty());
     let chrome = crate::platform::chrome_local_state().is_some_and(|f| f.is_file());
     // The built-in meeting notes' record, written once Fathom has given a
     // meeting here.
@@ -753,6 +768,7 @@ pub fn found_here() -> Vec<&'static str> {
     [
         ("github", gh),
         ("linear", linear),
+        ("jira", jira),
         ("chrome_profiles", chrome),
         ("meeting_notes", fathom),
         ("view_slack", slack),
@@ -1083,7 +1099,13 @@ mod tests {
                 json!(false),
                 "{key} starts off on a new computer"
             );
-            let before = DEFAULT_BEFORE.iter().find(|(k, _)| k == key).unwrap().1;
+            let Some(before) = DEFAULT_BEFORE.iter().find(|(k, _)| k == key).map(|b| b.1) else {
+                assert!(
+                    NEW_SINCE_CARRIED.contains(key),
+                    "{key}: an older build's default, or new since"
+                );
+                continue;
+            };
             let raw: Vec<Setting> = serde_json::from_str(SCHEMA).unwrap();
             let listed = raw.iter().find(|o| o.key == *key).unwrap();
             assert_eq!(

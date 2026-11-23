@@ -16,6 +16,13 @@ allowed-tools:
   - mcp__claude_ai_Linear__list_teams
   - mcp__claude_ai_Linear__list_issue_statuses
   - mcp__claude_ai_Linear__get_user
+  - Bash(switchboard tracker *)
+  - mcp__claude_ai_Atlassian_MCP__getAccessibleAtlassianResources
+  - mcp__claude_ai_Atlassian_MCP__getJiraIssue
+  - mcp__claude_ai_Atlassian_MCP__searchJiraIssuesUsingJql
+  - mcp__claude_ai_Atlassian_MCP__listJiraIssueComments
+  - mcp__claude_ai_Atlassian_MCP__discover
+  - mcp__claude_ai_Atlassian_MCP__executeRead
 ---
 
 # Coordinate

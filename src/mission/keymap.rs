@@ -47,6 +47,7 @@ use crate::ui::palette;
 pub struct Shown {
     pub github: bool,
     pub linear: bool,
+    pub jira: bool,
     /// Easy mode's Cmd keys in Notes (easy_keys).
     pub easy: bool,
 }
@@ -189,7 +190,7 @@ fn shared_keys(bindings: &Bindings, e: &palette::Entry) -> Vec<String> {
 /// first, each group's in the order of what they do; then the commands no
 /// key is bound to, under "Through M-p".
 fn workspace(bindings: &Bindings, shown: Shown, counts: &HashMap<String, u64>) -> Vec<Item> {
-    let mut entries = palette::entries(bindings, shown.github, shown.linear, &[]);
+    let mut entries = palette::entries(bindings, shown.github, shown.linear, shown.jira, &[]);
     palette::for_this_build(&mut entries, crate::dev::build_is_from_clone());
     // M-p itself, which the palette leaves out of its own list.
     if let Some((words, tags)) = Action::Palette.palette_note() {
@@ -404,6 +405,7 @@ mod tests {
     const ALL: Shown = Shown {
         github: true,
         linear: true,
+        jira: true,
         easy: false,
     };
 

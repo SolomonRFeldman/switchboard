@@ -39,10 +39,11 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::diff::in_place::IN_PLACE;
-use crate::integrations::{github, linear};
+use crate::integrations::github;
+use crate::integrations::tracker::{self, Tracker};
 use crate::mux::graphics;
 use crate::mux::server::{ClientId, Event as ServerEvent, Server};
 use crate::notes::images::{self, Picture};
@@ -73,26 +74,32 @@ const SETTLE: Duration = Duration::from_millis(250);
 pub enum Asked {
     /// The PR of the branch checked out in this directory.
     Pr(PathBuf),
-    /// A Linear ticket, by its identifier in capitals.
-    Ticket(String),
+    /// A Linear or Jira ticket, by its identifier in capitals.
+    Ticket(Tracker, String),
 }
 
 impl Asked {
     fn what(&self) -> &'static str {
         match self {
             Asked::Pr(_) => "PR",
-            Asked::Ticket(_) => "ticket",
+            Asked::Ticket(..) => "ticket",
         }
     }
 }
 
-/// The arguments: `--ticket <ID>`, else the directory (where it runs, by
-/// default).
+/// The arguments: `--ticket <ID>` (Linear's, or Jira's as `jira:<ID>`),
+/// else the directory (where it runs, by default).
 pub fn asked(args: &[String]) -> Result<Asked, String> {
     match args {
-        [flag, id] if flag == "--ticket" => crate::views::ticket::id_of(id)
-            .map(Asked::Ticket)
-            .ok_or_else(|| "That isn't a Linear ticket ID.".to_string()),
+        [flag, id] if flag == "--ticket" => {
+            let (tracker, id) = match id.strip_prefix("jira:") {
+                Some(id) => (Tracker::Jira, id),
+                None => (Tracker::Linear, id.as_str()),
+            };
+            crate::views::ticket::id_of(id)
+                .map(|id| Asked::Ticket(tracker, id))
+                .ok_or_else(|| "That isn't a ticket ID.".to_string())
+        }
         [flag] if flag == "--ticket" => Err("Which ticket? pr-image --ticket <ID>".into()),
         [] => Ok(Asked::Pr(
             std::env::current_dir().unwrap_or_else(|_| paths::home()),
@@ -102,11 +109,13 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     }
 }
 
-/// The file the last copy is kept in: the ticket's ID, or the checkout's
-/// git directory and branch, each `/` a `%`.
+/// The file the last copy is kept in: the ticket's ID (Jira's after
+/// `jira:`, so one tracker's ticket never shows as the other's), or the
+/// checkout's git directory and branch, each `/` a `%`.
 fn cache_file(asked: &Asked) -> Option<PathBuf> {
     let key = match asked {
-        Asked::Ticket(id) => id.clone(),
+        Asked::Ticket(Tracker::Jira, id) => format!("jira:{id}"),
+        Asked::Ticket(Tracker::Linear, id) => id.clone(),
         Asked::Pr(dir) => {
             let place = crate::tabs::git::locate(dir)?;
             format!("{}:{}", place.git_dir.display(), place.branch)
@@ -137,14 +146,13 @@ async fn fetch(asked: &Asked) -> Result<Parts, String> {
             .map_err(|e| format!("Couldn't read the description as GitHub renders it: {e}"))?;
             Ok(page::pr_parts(&full))
         }
-        Asked::Ticket(id) => {
-            let data = linear::graphql(page::TICKET_QUERY, json!({ "id": id }), SOURCE)
+        Asked::Ticket(asked, id) => {
+            let name = asked.name();
+            tracker::detail(*asked, id, SOURCE)
                 .await
-                .map_err(|e| format!("Couldn't read {id} from Linear: {e}"))?;
-            data.get("issue")
-                .filter(|i| i.is_object())
-                .map(page::ticket_parts)
-                .ok_or_else(|| format!("Linear has no ticket {id}."))
+                .map_err(|e| format!("Couldn't read {id} from {name}: {e}"))?
+                .map(|issue| page::ticket_parts(&issue))
+                .ok_or_else(|| format!("{name} has no ticket {id}."))
         }
     }
 }
@@ -665,12 +673,13 @@ impl Server {
     /// the pane it stands in for, as tmux.conf's binding checked
     /// `@in_place` first.
     pub fn image_view(&mut self, client: ClientId, ticket: bool) {
+        // A ticket's tracker is known once its ticket is found, below.
         let (tool, service) = if ticket {
-            (TICKET_TOOL, "linear")
+            (TICKET_TOOL, None)
         } else {
-            (PR_TOOL, "github")
+            (PR_TOOL, Some("github"))
         };
-        if !settings::is_on(service) {
+        if let Some(service) = service.filter(|s| !settings::is_on(s)) {
             self.service_off(client, service);
             return;
         }
@@ -695,11 +704,19 @@ impl Server {
         };
         let mut command = vec![exe(), "pr-image".into()];
         if ticket {
-            let Some(id) = self.ticket_here(tab, &dir) else {
-                self.say(Some(client), "No Linear ticket in this branch or tab name");
+            let Some((tracker, id)) = self.ticket_here(tab, &dir) else {
+                self.say(Some(client), "No ticket in this branch or tab name");
                 return;
             };
-            command.extend(["--ticket".into(), id]);
+            if !tracker.is_on() {
+                self.service_off(client, tracker.key());
+                return;
+            }
+            let arg = match tracker {
+                Tracker::Jira => format!("jira:{id}"),
+                Tracker::Linear => id,
+            };
+            command.extend(["--ticket".into(), arg]);
         } else {
             command.push(dir.to_string_lossy().into_owned());
         }
@@ -746,7 +763,7 @@ mod tests {
         let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
             asked(&args(&["--ticket", "eng-42"])),
-            Ok(Asked::Ticket("ENG-42".into()))
+            Ok(Asked::Ticket(Tracker::Linear, "ENG-42".into()))
         );
         assert!(asked(&args(&["--ticket", "$(x)"])).is_err());
         assert_eq!(

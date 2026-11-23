@@ -161,7 +161,7 @@ static PATTERNS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
         ("reads gh's token", r"\bgh\s+auth\s+token\b"),
         (
             "reaches for credentials",
-            r"\b(GH_TOKEN|GITHUB_TOKEN|LINEAR_API_KEY|ANTHROPIC_API_KEY|NPM_TOKEN|CARGO_REGISTRY_TOKEN|AWS_SECRET_ACCESS_KEY)\b|\.credentials\.json|\.netrc\b|\.git-credentials|\.aws/credentials|\.cargo/credentials|_authToken",
+            r"\b(GH_TOKEN|GITHUB_TOKEN|LINEAR_API_KEY|JIRA_API_TOKEN|ANTHROPIC_API_KEY|NPM_TOKEN|CARGO_REGISTRY_TOKEN|AWS_SECRET_ACCESS_KEY)\b|\.credentials\.json|\.netrc\b|\.git-credentials|\.aws/credentials|\.cargo/credentials|_authToken",
         ),
         ("reaches for SSH keys", r"\.ssh/|SSH_AUTH_SOCK"),
         ("opens a socket", r"/dev/(tcp|udp)/|\bnc\s+-"),
@@ -690,6 +690,10 @@ mod tests {
         );
         assert_eq!(
             what("let t = env::var(\"GH_TOKEN\");"),
+            ["reaches for credentials"]
+        );
+        assert_eq!(
+            what("let t = env::var(\"JIRA_API_TOKEN\");"),
             ["reaches for credentials"]
         );
         assert_eq!(

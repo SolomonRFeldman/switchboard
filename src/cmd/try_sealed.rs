@@ -88,6 +88,7 @@ use crate::{paths, requests, trust, util};
 pub const SEALED_OFF: &[(&str, &str)] = &[
     ("github", "false"),
     ("linear", "false"),
+    ("jira", "false"),
     ("notifications", "false"),
     ("link_view_docs", "false"),
     ("chrome_profiles", "false"),

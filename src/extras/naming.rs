@@ -6,7 +6,8 @@
 //! `/wt` clears when it hands the tab over. Each ticket is the one the tab's
 //! branch names when it names one, else asked for; the ticket's own branch
 //! with `t` clears the name instead, since the tab shows its ticket and
-//! title by itself there, kept current as Linear's title changes. A branch
+//! title by itself there, kept current as its title changes in Linear or
+//! Jira (the repository's tracker, or a link's). A branch
 //! started for a GitHub issue (`wt --issue`) is its ticket the same way:
 //! `t` clears the name, the tab showing `#12: <title>`, and `s` names it
 //! "Shaping: #12".
@@ -17,8 +18,8 @@
 
 use std::path::PathBuf;
 
-use super::{TicketTyped, ticket_typed};
-use crate::integrations::linear;
+use super::ticket_typed;
+use crate::integrations::tracker::{self, Tracker};
 use crate::mission::ask::Ask;
 use crate::mux::TabId;
 use crate::mux::server::{ClientId, Server};
@@ -36,7 +37,7 @@ impl Server {
             .into_iter()
             .find(|t| matches!(t, Ticket::Issue { .. }))
             .filter(|_| settings::is_on("github"));
-        let titled = issue.is_some() || settings::is_on("linear");
+        let titled = issue.is_some() || tracker::for_id_in(&dir).is_on();
         if titled {
             options.push(MenuOption::new("Its ticket and the ticket's title").key('t'));
         }
@@ -60,7 +61,10 @@ impl Server {
                     return server.set_tab_name(tab, &name);
                 }
                 match ticket::id_for_dir(&dir) {
-                    Some(id) => server.name_after_ticket(client, tab, id, true, shaping),
+                    Some(id) => {
+                        let tracker = tracker::for_id_in(&dir);
+                        server.name_after_ticket(client, tab, tracker, id, true, shaping)
+                    }
                     None => server.ask_ticket_for_name(client, tab, dir, shaping),
                 }
             })
@@ -69,7 +73,7 @@ impl Server {
 
     /// The ticket a tab is named after, when its branch names none.
     fn ask_ticket_for_name(&mut self, client: ClientId, tab: TabId, dir: PathBuf, shaping: bool) {
-        let ask = Ask::new("Ticket", "Its ID, like ABC-123, or its Linear link.");
+        let ask = Ask::new("Ticket", "Its ID, like ABC-123, or its link.");
         self.about_tab(client, tab, move |s| {
             s.open(
                 client,
@@ -80,8 +84,10 @@ impl Server {
                     };
                     let branch = ticket::id_for_dir(&dir);
                     match ticket_typed(&p.value, branch.as_deref()) {
-                        Ok(TicketTyped::Id(id) | TicketTyped::Url { id, .. }) => {
-                            server.name_after_ticket(client, tab, id, false, shaping)
+                        Ok(typed) => {
+                            let tracker = typed.tracker_or(tracker::for_id_in(&dir));
+                            let id = typed.id().to_string();
+                            server.name_after_ticket(client, tab, tracker, id, false, shaping)
                         }
                         Err(why) => server.say(Some(client), &why),
                     }
@@ -91,12 +97,14 @@ impl Server {
     }
 
     /// Names the tab "Shaping: <id>", or after the ticket and its title as
-    /// Linear has it; the branch's own ticket (`branch`) clears the name,
-    /// once Linear has confirmed the ticket, so the tab shows it by itself.
+    /// its tracker has it; the branch's own ticket (`branch`) clears the
+    /// name, once the tracker has confirmed the ticket, so the tab shows it
+    /// by itself.
     fn name_after_ticket(
         &mut self,
         client: ClientId,
         tab: TabId,
+        tracker: Tracker,
         id: String,
         branch: bool,
         shaping: bool,
@@ -105,11 +113,14 @@ impl Server {
             self.set_tab_name(tab, &format!("Shaping: {id}"));
             return;
         }
-        self.say(Some(client), "Reaching out to Linear...");
+        self.say(
+            Some(client),
+            &format!("Reaching out to {}...", tracker.name()),
+        );
         let asked = id.clone();
         self.off_task(
             client,
-            move || util::block_on(linear::ticket(&asked, "name the tab")),
+            move || util::block_on(tracker::ticket(tracker, &asked, "name the tab")),
             move |server, client, found| match found {
                 Ok(Some(t)) if !t.title.is_empty() => {
                     server.close_overlays(client, "message");
@@ -122,12 +133,16 @@ impl Server {
                 }
                 Ok(_) => server.say(
                     Some(client),
-                    &format!("Linear has no title for {id}, so the tab was left as it was."),
+                    &format!(
+                        "{} has no title for {id}, so the tab was left as it was.",
+                        tracker.name()
+                    ),
                 ),
                 Err(e) => server.say(
                     Some(client),
                     &format!(
-                        "Couldn't ask Linear about {id}, so the tab was left as it was.\n\n{e}"
+                        "Couldn't ask {} about {id}, so the tab was left as it was.\n\n{e}",
+                        tracker.name()
                     ),
                 ),
             },

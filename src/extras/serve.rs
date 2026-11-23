@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use super::text::{TextBox, Tone};
 use super::{Command, OPTION_CHARS, PrTyped, TicketTyped};
+use crate::integrations::tracker::{self, Tracker};
 use crate::mission::ask::Ask;
 use crate::mission::{Mission, Opening, ViewId};
 use crate::mux::input::{self, Key, KeyCode, Mods};
@@ -205,11 +206,9 @@ impl Server {
 
     /// A command, from its key or the palette.
     pub fn extras_command(&mut self, client: ClientId, command: Command, pane: Option<PaneId>) {
-        for (tag, service) in [("github", "github"), ("linear", "linear")] {
-            if command.tags().contains(&tag) && !settings::is_on(service) {
-                self.service_off(client, service);
-                return;
-            }
+        if let Some(service) = crate::integrations::tagged_off(command.tags()) {
+            self.service_off(client, service);
+            return;
         }
         match command {
             Command::RenameTab => {
@@ -1011,10 +1010,12 @@ impl Server {
         });
     }
 
-    /// "Open a Linear ticket in the browser by ID, number or URL"
+    /// "Open a ticket in the browser by ID, number or link"
     /// (ticket-open.zsh): typed, the clipboard's when it holds one; empty is
-    /// the Linear ticket the branch names, else the tab's (`ticket_here`), and a bare number takes the
-    /// team key of the ticket the branch names. Then the browser, or a new
+    /// the ticket the branch names, else the tab's (`ticket_here`), and a
+    /// bare number takes the team key of the ticket the branch names. A bare
+    /// ID is the repository's tracker's (Jira's where its tickets are in
+    /// Jira, else Linear's), a link its site's. Then the browser, or a new
     /// tab working on it (`wt`) in the pane's repository.
     fn open_ticket_id_typed(&mut self, client: ClientId, pane: Option<PaneId>) {
         let dir = self.dir_or_home(pane);
@@ -1027,7 +1028,7 @@ impl Server {
             let work_dir = self.work_dir(tab, p, here);
             self.ticket_here(tab, &work_dir)
         });
-        let known = branch_ticket.clone();
+        let known = branch_ticket.as_ref().map(|(_, id)| id.clone());
         self.off_task(
             client,
             move || {
@@ -1040,7 +1041,7 @@ impl Server {
             move |server, client, prefill| {
                 let ask = Ask::new(
                     "Open a ticket",
-                    "A ticket ID, number or Linear URL; empty for the Linear ticket the branch names, else the tab's.",
+                    "A ticket ID, number or link; empty for the ticket the branch names, else the tab's.",
                 )
                 .text(prefill)
                 .empty_ok();
@@ -1063,29 +1064,31 @@ impl Server {
         client: ClientId,
         typed: &str,
         dir: PathBuf,
-        branch_ticket: Option<String>,
+        branch_ticket: Option<(Tracker, String)>,
     ) {
-        // Empty is the branch's Linear ticket, this command being Linear's.
+        // Empty is the branch's ticket.
         if typed.trim().is_empty() {
-            // Linear turned off while the box was open opens nothing.
-            if !settings::is_on("linear") {
-                self.service_off(client, "linear");
-                return;
-            }
             match branch_ticket {
-                Some(id) => self.open_ticket_id(client, id),
-                None => self.say(Some(client), "No Linear ticket in this branch or tab name"),
+                // Its tracker turned off while the box was open opens nothing.
+                Some((tracker, _)) if !tracker.is_on() => self.service_off(client, tracker.key()),
+                Some((tracker, id)) => self.open_ticket_id(client, tracker, id),
+                None => self.say(Some(client), "No ticket in this branch or tab name"),
             }
             return;
         }
-        let (id, url) = match super::ticket_typed(typed, branch_ticket.as_deref()) {
-            Ok(TicketTyped::Url { url, id }) => (id, Some(url)),
-            Ok(TicketTyped::Id(id)) => (id, None),
+        let team = branch_ticket.as_ref().map(|(_, id)| id.as_str());
+        let (tracker, id, url) = match super::ticket_typed(typed, team) {
+            Ok(TicketTyped::Url { url, id, tracker }) => (tracker, id, Some(url)),
+            Ok(TicketTyped::Id(id)) => (tracker::for_id_in(&dir), id, None),
             Err(why) => {
                 self.say(Some(client), &why);
                 return;
             }
         };
+        if !tracker.is_on() {
+            self.service_off(client, tracker.key());
+            return;
+        }
         let menu = Menu::new(
             id.clone(),
             vec![
@@ -1094,9 +1097,9 @@ impl Server {
             ],
         );
         self.choose(client, menu, move |server, client, chose| match chose {
-            Some(0) => match url {
+            Some(0) => match url.clone() {
                 Some(url) => server.open_link(client, url),
-                None => server.open_ticket_id(client, id),
+                None => server.open_ticket_id(client, tracker, id),
             },
             Some(_) => {
                 let Some(repo) = crate::cmd::work::main_clone(&dir) else {
@@ -1109,7 +1112,9 @@ impl Server {
                     );
                     return;
                 };
-                let command = worktree::tab_running("worktree-from-ticket", "wt", &[id]);
+                // A link's tracker is named to wt; an ID is the repository's.
+                let arg = worktree::ticket_arg(url.map(|_| tracker), &id);
+                let command = worktree::tab_running("worktree-from-ticket", "wt", &[arg]);
                 if let Some(tab) =
                     server.work_tab(client, &repo, command, crate::mux::server::Opened::Front)
                 {

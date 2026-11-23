@@ -18,8 +18,9 @@
 //! runs here with no one asked, so a pull never does (`trusted-dirs`,
 //! `repos.json`, whose commands a landing runs, and `sidebar-plugins/`,
 //! whose programs the server runs); `slack-relay.json`, which names the one
-//! person the relay answers to; `secrets.json`, `linear.json` (it may hold
-//! your Linear key) and `leak-check.txt`, which hold what must not be
+//! person the relay answers to; `secrets.json`, `linear.json` and
+//! `jira.json` (they may hold your Linear key or Jira token) and
+//! `leak-check.txt`, which hold what must not be
 //! published; the files Claude's skills read by their path in
 //! `~/.config/switchboard` (`oncall.json`, `oncall-rules.md`,
 //! `slack-updates.json`); `autopilot-claim.json`, the ID autopilot claims
@@ -86,6 +87,7 @@ pub const LOCAL: &[&str] = &[
     "slack-relay.json",
     "sidebar-plugins",
     "linear.json",
+    "jira.json",
     "oncall.json",
     "oncall-rules.md",
     "slack-updates.json",
@@ -981,6 +983,7 @@ mod tests {
             "slack-relay.json",
             "sidebar-plugins",
             "linear.json",
+            "jira.json",
             "oncall.json",
             "oncall-rules.md",
             "slack-updates.json",

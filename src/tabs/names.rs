@@ -51,7 +51,7 @@ use super::color::{self, Rgb, Shade, Tint};
 use super::git::{self, GitPlace};
 use super::label;
 use crate::integrations::github::{self, Repo};
-use crate::integrations::linear;
+use crate::integrations::tracker::{self, Tracker};
 use crate::views::ticket::{self, Ticket};
 use crate::{net, settings};
 
@@ -85,6 +85,8 @@ pub struct Switches {
     pub github: bool,
     /// `linear`: Linear tickets' titles.
     pub linear: bool,
+    /// `jira`: Jira tickets' titles.
+    pub jira: bool,
     /// `tab_lookups`: either of them in tab names.
     pub lookups: bool,
     /// `accent_colors`: a color per project, else gray.
@@ -100,6 +102,7 @@ impl Default for Switches {
         Switches {
             github: true,
             linear: true,
+            jira: true,
             lookups: true,
             colors: true,
             shade: Shade::Soft,
@@ -117,6 +120,7 @@ impl Switches {
         Switches {
             github: on("github"),
             linear: on("linear"),
+            jira: on("jira"),
             lookups: on("tab_lookups"),
             colors: on("accent_colors"),
             apart: on("tab_colors_apart"),
@@ -133,6 +137,7 @@ impl Switches {
         self.lookups
             && match service {
                 "github" => self.github,
+                "jira" => self.jira,
                 _ => self.linear,
             }
     }
@@ -275,9 +280,15 @@ impl Ask {
                     Some((repo, number)) => {
                         github::issue_title(&repo, number, "tab name: issue title").await
                     }
-                    None => linear::ticket(&id, "tab name: ticket title")
-                        .await
-                        .map(|t| t.map(|t| t.title)),
+                    None => {
+                        let (tracker, key) = match id.strip_prefix("jira:") {
+                            Some(key) => (Tracker::Jira, key),
+                            None => (Tracker::Linear, id.as_str()),
+                        };
+                        tracker::ticket(tracker, key, "tab name: ticket title")
+                            .await
+                            .map(|t| t.map(|t| t.title))
+                    }
                 };
                 Answer::Title {
                     id,
@@ -387,7 +398,14 @@ impl Names {
             .map(|p| {
                 ticket::of_dir_all(dir, Some("github"))
                     .into_iter()
-                    .chain(ticket::id_in_branch(&p.branch).map(Ticket::Linear))
+                    // A Jira ticket's in a repository whose tickets are in
+                    // Jira, else Linear's.
+                    .chain(ticket::id_in_branch(&p.branch).map(|id| {
+                        ticket::in_repo(
+                            Ticket::Linear(id),
+                            crate::repos::tickets_known(dir).as_deref(),
+                        )
+                    }))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()

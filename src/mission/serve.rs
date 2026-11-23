@@ -41,6 +41,7 @@ use super::inbox_board;
 use super::remind;
 use super::views::{self, Scope, View, ViewId};
 use super::{After, Focus, Jump, Mission, MissionEvent, Pane, Snapshot, Spot};
+use crate::integrations::tracker::Tracker;
 use crate::items::{Item, Target, ViewData};
 use crate::mux::input::{self, Input, Key, KeyCode, Mods, Mouse, MouseButton, MouseKind, Parsed};
 use crate::mux::server::{ClientId, Event, Server};
@@ -1071,7 +1072,8 @@ impl Server {
         let cached = !self.mission.inbox_tickets.contains_key(&ticket);
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let file = crate::views::ticket::cache_file(&ticket);
+            // The Inbox is Linear's.
+            let file = crate::views::ticket::cache_file(Tracker::Linear, &ticket);
             if cached {
                 let read = file.clone();
                 let copy = tokio::task::spawn_blocking(move || util::read_json(read))
@@ -1086,7 +1088,7 @@ impl Server {
                     }));
                 }
             }
-            let value = match crate::views::ticket::fetch(&ticket).await {
+            let value = match crate::views::ticket::fetch(Tracker::Linear, &ticket).await {
                 Ok(issue) => {
                     let text = util::json_compact(&issue);
                     let _ = tokio::task::spawn_blocking(move || {
@@ -1871,6 +1873,7 @@ impl Server {
             let shown = super::keymap::Shown {
                 github: on("github"),
                 linear: on("linear"),
+                jira: on("jira"),
                 easy: on("easy_keys"),
             };
             let counts = self.keys_week();
@@ -4243,6 +4246,7 @@ impl Server {
         super::view_acts::Facts {
             github: settings::is_on("github"),
             linear: settings::is_on("linear"),
+            jira: settings::is_on("jira"),
             slack_background: settings::is_on("slack_background"),
             slack_down: crate::connector::connector_down("Slack").is_some(),
             slack_mark_read: settings::is_on("slack_mark_read")
@@ -4569,8 +4573,8 @@ impl Server {
     }
 
     /// Whether a kept notification's service is turned off (`github` for
-    /// a PR's news and a failing default branch, `linear` for the Inbox),
-    /// saying so: its choices would reach it.
+    /// a PR's news and a failing default branch, `linear` for the
+    /// Inbox), saying so: its choices would reach it.
     fn notice_service_off(&mut self, client: ClientId, item: &Item) -> bool {
         let (source, _) = choices::notice_of(item);
         let (key, name) = match source.as_str() {
@@ -4780,6 +4784,7 @@ impl Server {
         let shown = super::keymap::Shown {
             github: on("github"),
             linear: on("linear"),
+            jira: on("jira"),
             easy: on("easy_keys"),
         };
         let counts = self.keys_week();
@@ -5126,17 +5131,35 @@ impl Server {
                 );
                 self.mission_go(client, tab);
             }
-            Do::CloseTicket { ticket, title } => {
-                // Which state it would move to, from Linear, then asked about
-                // on the server, since it changes Linear for everyone.
+            Do::CloseTicket {
+                ticket,
+                title,
+                tracker,
+            } => {
+                // Which state it would move to, from the tracker, then asked
+                // about on the server, since it changes the tracker for
+                // everyone; never in a tracker the card didn't come from.
+                if crate::sources::tickets::moved(tracker.as_deref()) {
+                    self.say(Some(client), &moved_message(&ticket));
+                    return;
+                }
+                let from = tracker
+                    .as_deref()
+                    .and_then(Tracker::of)
+                    .unwrap_or(Tracker::Linear);
                 self.mission_busy_with(client, label, async move {
-                    match crate::sources::tickets::done_state_of(&ticket).await {
+                    match crate::sources::tickets::done_state_of(from, &ticket).await {
                         Err(e) => (
                             Some(format!("Couldn't read the ticket: {}", first_line(&e))),
                             None,
                         ),
                         Ok(None) => (
-                            Some(format!("{ticket}'s team has no completed state.")),
+                            Some(match from {
+                                Tracker::Jira => format!("{ticket} has no way to Done in Jira."),
+                                Tracker::Linear => {
+                                    format!("{ticket}'s team has no completed state.")
+                                }
+                            }),
                             None,
                         ),
                         Ok(Some((_, true, _, _))) => {
@@ -5150,6 +5173,7 @@ impl Server {
                                 issue,
                                 state,
                                 name,
+                                tracker,
                             }),
                         ),
                     }
@@ -5877,6 +5901,7 @@ impl Server {
                 issue,
                 state,
                 name,
+                tracker,
             } => {
                 self.ask(
                     client,
@@ -5885,13 +5910,24 @@ impl Server {
                         if !yes {
                             return;
                         }
+                        if crate::sources::tickets::moved(tracker.as_deref()) {
+                            server.say(Some(client), &moved_message(&ticket));
+                            return;
+                        }
+                        let from = tracker
+                            .as_deref()
+                            .and_then(Tracker::of)
+                            .unwrap_or(Tracker::Linear);
                         server.mission_busy_with(client, "Working on it", async move {
-                            match crate::sources::tickets::close_ticket(&issue, &state).await {
+                            match crate::sources::tickets::close_ticket(from, &issue, &state).await
+                            {
                                 Ok(true) => (
                                     Some(format!("Moved {ticket} to {name}.")),
                                     Some(After::Tickets),
                                 ),
-                                Ok(false) => (Some("Linear didn't close it.".into()), None),
+                                Ok(false) => {
+                                    (Some(format!("{} didn't close it.", from.name())), None)
+                                }
                                 Err(e) => {
                                     (Some(format!("Couldn't close it: {}", first_line(&e))), None)
                                 }
@@ -6823,6 +6859,7 @@ impl Server {
                         ),
                         ("github", "GitHub issues"),
                         ("linear", "Linear"),
+                        ("jira", "Jira"),
                         ("notes", "A note's checklist, with a plan note each"),
                     ],
                     "testIn" => vec![
@@ -7209,6 +7246,12 @@ fn merged_worktree(path: &Path) -> Option<(PathBuf, PathBuf)> {
     let text = path.to_string_lossy();
     text.split_once("/.claude/worktrees/")
         .map(|(main, _)| (PathBuf::from(main), path.to_path_buf()))
+}
+
+// What closing a card says when its tracker was turned off since the card
+// was read.
+fn moved_message(ticket: &str) -> String {
+    format!("{ticket}'s ticket tracker is off in Settings now, so it was left as it is.")
 }
 
 /// An error's first line, for a note.

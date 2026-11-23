@@ -230,7 +230,7 @@ impl ViewId {
             built_in => crate::usage::habits::VIEWS
                 .iter()
                 .find(|v| v.title == built_in.title())
-                .is_some_and(|v| on(v.key) && v.needs.is_none_or(&on)),
+                .is_some_and(|v| on(v.key) && v.needs_met(&on)),
         }
     }
 
@@ -251,7 +251,7 @@ impl ViewId {
             }
             ViewId::Autopilot => "the note autopilot works, a card for each item",
             ViewId::Routines => "your prompts run on a schedule, their runs this week",
-            ViewId::Tickets => "your Linear issues by state",
+            ViewId::Tickets => "your Linear and Jira tickets by state",
             ViewId::Inbox => "your unread Linear mentions, comments and assignments",
             ViewId::Resources => "the CPU and memory each tab uses",
             ViewId::Usage => "today's Claude spend and the rate limits",
@@ -302,7 +302,7 @@ impl ViewId {
                 "Each routine with when it runs next, where it runs and how its last run went, then this week's runs by day; beside, the chosen one's prompt, today's runs and its next ones. n makes one, r runs it now, e changes it, p pauses it. Settings' \"Routines\" (routines)."
             }
             ViewId::Tickets => {
-                "Columns Todo, In progress, In review and Done, then the tickets canceled, in the last 7 days, an urgent one marked as needing you. Enter starts work or shapes it in a new tab. Needs Linear; Settings' \"Ticket board\" (ticket_board)."
+                "Columns Todo, In progress, In review and Done, then the tickets canceled, in the last 7 days, an urgent one marked as needing you. Enter starts work or shapes it in a new tab. Needs Linear or Jira; Settings' \"Ticket board\" (ticket_board)."
             }
             ViewId::Inbox => {
                 "Newest first, each in the sidebar's notifications too; status changes are left out. Enter offers what the Tickets board does, and marks it read in Linear. Needs Linear; Settings' \"Inbox\" (view_inbox)."
@@ -325,8 +325,8 @@ impl ViewId {
         }
     }
 
-    /// Its tags in M-p: `#github` and `#linear` take it out while that
-    /// service is off.
+    /// Its tags in M-p: `#github`, `#linear` and `#jira` take it out while
+    /// that service is off (every one it is tagged with).
     pub fn tags(&self) -> &'static [&'static str] {
         match self {
             ViewId::Notifications => &["mission", "notifications"],
@@ -341,7 +341,7 @@ impl ViewId {
             ViewId::Landing => &["mission", "queue", "landing"],
             ViewId::Autopilot => &["mission", "autopilot"],
             ViewId::Routines => &["mission", "routines", "schedule"],
-            ViewId::Tickets => &["mission", "linear", "ticket"],
+            ViewId::Tickets => &["mission", "linear", "jira", "ticket"],
             ViewId::Inbox => &["mission", "linear", "inbox"],
             ViewId::Resources => &["mission", "cpu", "memory", "processes"],
             ViewId::Usage => &["mission", "claude", "usage", "cost"],
@@ -2213,8 +2213,11 @@ mod tests {
         };
         assert!(!shown(&off(&["usage"])).contains(&"Usage"));
         let linear_off = shown(&off(&["linear"]));
-        assert!(!linear_off.contains(&"Tickets") && !linear_off.contains(&"Inbox"));
+        assert!(!linear_off.contains(&"Inbox"));
+        assert!(linear_off.contains(&"Tickets"), "Jira's, with Jira on");
         assert!(linear_off.contains(&"PRs"));
+        let trackers_off = shown(&off(&["linear", "jira"]));
+        assert!(!trackers_off.contains(&"Tickets"));
         assert!(!shown(&off(&["reminders"])).contains(&"Reminders"));
         assert!(!shown(&off(&["view_autopilot"])).contains(&"Autopilot"));
         assert!(!shown(&off(&["sidebar_notifications"])).contains(&"Notifications"));

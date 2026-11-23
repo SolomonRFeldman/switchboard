@@ -21,8 +21,8 @@
 //! conflict and the default branch's CI isn't failing (empty or not set, the
 //! tests run again), since a clean rebase changes nothing the tests haven't
 //! seen pass on each side. `tickets` is where the repository's work is
-//! kept, `github` (its issues), `linear` or `notes` (a note's checklist
-//! and its plans), the one place a repository's tickets are decided: `wt
+//! kept, `github` (its issues), `linear`, `jira` or `notes` (a note's
+//! checklist and its plans), the one place a repository's tickets are decided: `wt
 //! <number>` starts its work from it (`tickets_at`), M-i opens a tab's
 //! ticket from it (`tickets_known`), `/shape` files new work in it
 //! (`switchboard tickets`) and autopilot takes its work from it. It has no
@@ -152,7 +152,7 @@ pub const REVIEWS: [&str; 2] = ["review-loop", "none"];
 /// repository's CI.
 pub const TEST_IN: [&str; 2] = ["here", "ci"];
 /// Where a repository's work can be kept, its `tickets`.
-pub const TICKETS: [&str; 3] = ["github", "linear", "notes"];
+pub const TICKETS: [&str; 4] = ["github", "linear", "jira", "notes"];
 /// An answer worked out is kept this long, in ms.
 pub const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
@@ -505,7 +505,7 @@ pub fn label_ok(label: &str) -> bool {
 /// set, `name` its `owner/name` or what stands for it.
 pub fn unset_words(name: &str) -> String {
     format!(
-        "{name}'s ticket source isn't set: choose it in Settings' Tickets row, or set \"tickets\" to \"github\", \"linear\" or \"notes\" for it in {}",
+        "{name}'s ticket source isn't set: choose it in Settings' Tickets row, or set \"tickets\" to \"github\", \"linear\", \"jira\" or \"notes\" for it in {}",
         crate::files::shown("repos.json")
     )
 }
@@ -1227,8 +1227,13 @@ mod tests {
             tickets_of(&entry_of(&written, "ACME/direct")).as_deref(),
             Some("github")
         );
+        set_repo_in(&path, "acme/direct", "tickets", json!("jira")).unwrap();
+        assert_eq!(
+            tickets_of(&entry_of(&read_file(&path).unwrap(), "acme/direct")).as_deref(),
+            Some("jira")
+        );
         assert!(
-            set_repo_in(&path, "acme/direct", "tickets", json!("jira"))
+            set_repo_in(&path, "acme/direct", "tickets", json!("trello"))
                 .unwrap_err()
                 .contains("not a value for tickets")
         );

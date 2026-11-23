@@ -72,6 +72,7 @@ pub mod ticket;
 
 pub use switchboard_ui::{markdown, mermaid};
 
+use crate::integrations::tracker::Tracker;
 use crate::mux::server::ClientId;
 
 /// What the views do from a key or the palette, an action of the
@@ -213,22 +214,22 @@ impl Command {
         match self {
             Command::PrView => "View the branch's PR description in Claude's place, or close it",
             Command::TicketView => {
-                "View the tab's ticket (its Linear ticket or project, or its GitHub issue), with its comments, in Claude's place, or close it"
+                "View the tab's ticket (its Linear ticket or project, its Jira ticket, or its GitHub issue), with its comments, in Claude's place, or close it"
             }
             Command::OpenPr => "Open the branch's PR in the browser",
             Command::OpenRepo => "Open the repository in the browser",
             Command::OpenTicket => {
-                "Open the tab's ticket in the browser: its Linear ticket or project, or its GitHub issue"
+                "Open the tab's ticket in the browser: its Linear ticket or project, its Jira ticket, or its GitHub issue"
             }
             Command::ChooseTicket => "Choose this tab's ticket or project…",
             Command::FailingChecks => "See the branch's failing checks in a pane beside",
             Command::ResolveConflicts => "Type /resolve-conflicts into this tab's Claude",
             Command::Search => {
-                "Search the open tabs, notes, Linear, GitHub and Slack at once, and read a result beside the pane or go to the tab"
+                "Search the open tabs, notes, tickets, GitHub and Slack at once, and read a result beside the pane or go to the tab"
             }
             Command::SearchTabs => "Search the open tabs",
             Command::SearchNotes => "Search notes",
-            Command::SearchLinear => "Search Linear",
+            Command::SearchLinear => "Search tickets",
             Command::SearchGitHub => "Search GitHub",
             Command::SearchSlack => "Search Slack",
             Command::ReadLink => {
@@ -247,7 +248,9 @@ impl Command {
                 "Open an image or video from this pane in its app, or show it in its folder"
             }
             Command::OpenMergeQueue => "Open the repository's merge queue in the browser",
-            Command::OpenProject => "Open the branch's Linear project in the browser",
+            Command::OpenProject => {
+                "Open the branch's project (a Linear project or Jira epic) in the browser"
+            }
             Command::CopyTicketId => "Copy the branch's ticket ID",
             Command::CopyTicketUrl => "Copy the branch's ticket URL",
             Command::CopyPrNumber => "Copy the branch's PR number",
@@ -265,7 +268,7 @@ impl Command {
                 "The PR is found from the pane's branch, in a fork's upstream too, the copy last read showing while GitHub is asked again, with whether it can merge in its head and m opening its menu. It opens in this pane's place, or in the side panel beside a narrow lone pane in place of what is there. With no PR, it shows the branch's CI on GitHub."
             }
             Command::TicketView => {
-                "The ticket is one chosen for the tab, else the GitHub issue its branch was started for or the Linear ticket its branch names (repos.json's tickets saying which), else a ticket or project in a name you gave the tab. The copy last read shows while it is asked again, and it opens in this pane's place. With none found, you choose one of your Linear tickets and projects."
+                "The ticket is one chosen for the tab, else the GitHub issue its branch was started for or the Linear or Jira ticket its branch names (repos.json's tickets saying which), else a ticket or project in a name you gave the tab. The copy last read shows while it is asked again, and it opens in this pane's place. With none found, you choose one of your Linear tickets and projects."
             }
             Command::OpenPr => {
                 "A branch with no PR yet opens its repository instead, and a box says why. The link opens in the Chrome profile browser.json gives GitHub, and what went wrong is said in a box."
@@ -274,7 +277,7 @@ impl Command {
                 "The repository is the one origin names, whatever the branch, opened in the Chrome profile browser.json gives GitHub. When it can't open, a box says why: no git repository, no remote on GitHub or no token."
             }
             Command::OpenTicket => {
-                "The ticket is found as M-i finds it. A GitHub issue opens at once; with a workspace written in linear.json a Linear ticket's link is made at once, and without, Linear is asked where it is."
+                "The ticket is found as M-i finds it. A GitHub issue opens at once, and a Jira ticket on the site in jira.json; with a workspace written in linear.json a Linear ticket's link is made at once, and without, Linear is asked where it is."
             }
             Command::ChooseTicket => {
                 "Lists your Linear tickets and projects, most recently created first, and keeps the one chosen as the tab's ticket, which M-i and M-l then open, through a restart too. Esc changes nothing."
@@ -293,7 +296,7 @@ impl Command {
             | Command::SearchLinear
             | Command::SearchGitHub
             | Command::SearchSlack => {
-                "Opens M-F's search with this source's prefix typed (tab:, note:, linear:, gh:, slack:), so only it is asked. Prefixes can be typed in M-F too, more than one at a time."
+                "Opens M-F's search with this source's prefix typed (tab:, note:, linear: or jira:, gh:, slack:), so only it is asked. Prefixes can be typed in M-F too, more than one at a time."
             }
             Command::ReadLink => {
                 "A PR or ticket reads as its view lays it out, a Notion page or Google Doc through Claude's connectors, any other page as its main text. It replaces a link read beside before; Ctrl-O opens it in the browser."
@@ -320,13 +323,13 @@ impl Command {
                 "The queue is the one for the branch's PR's base branch, else for the repository's default branch when the branch has no PR. When it can't be found, a box says why."
             }
             Command::OpenProject => {
-                "Linear is asked which project the branch's ticket is in, the ID taken from the branch's name, else the tab's. A ticket in no project, or no ticket at all, is said in a box."
+                "The ticket's tracker (Linear, or Jira where repos.json's tickets say so) is asked which project (a Linear project or Jira epic) the branch's ticket is in, the ID taken from the branch's name, else the tab's. A ticket in no project, or no ticket at all, is said in a box."
             }
             Command::CopyTicketId => {
                 "The ticket is found as M-i finds it: a GitHub issue is copied as its number (#12), a Linear ticket as its ID. A box says what was copied, or that there is no ticket."
             }
             Command::CopyTicketUrl => {
-                "The ticket is found as M-i finds it. A GitHub issue's link is made at once; a Linear ticket's from the workspace written in linear.json, else asked of Linear. A box says what was copied, or that there is no ticket."
+                "The ticket is found as M-i finds it. A GitHub issue's link is made at once, and a Jira ticket's from the site in jira.json; a Linear ticket's from the workspace written in linear.json, else asked of Linear. A box says what was copied, or that there is no ticket."
             }
             Command::CopyPrNumber => {
                 "The PR is asked of GitHub by the pane's branch, a fork's upstream included. A box says what was copied, or that the branch has no pull request."
@@ -340,22 +343,22 @@ impl Command {
         }
     }
 
-    /// tmux.conf's tags: `#github` and `#linear` take a command out of the
+    /// tmux.conf's tags: `#github` and `#tracker` take a command out of the
     /// palette while that service is off.
     pub fn tags(self) -> &'static [&'static str] {
         match self {
             Command::PrView => &["github", "pr", "panes"],
-            Command::TicketView => &["linear", "github", "ticket", "panes"],
+            Command::TicketView => &["linear", "jira", "github", "ticket", "panes"],
             Command::OpenPr => &["github", "pr", "browser"],
             Command::OpenRepo => &["github", "repo", "browser"],
-            Command::OpenTicket => &["linear", "github", "ticket", "browser"],
-            Command::ChooseTicket => &["linear", "github", "tabs", "ticket"],
+            Command::OpenTicket => &["linear", "jira", "github", "ticket", "browser"],
+            Command::ChooseTicket => &["linear", "jira", "github", "tabs", "ticket"],
             Command::FailingChecks => &["github", "pr", "checks"],
             Command::ResolveConflicts => &["github", "pr", "merge"],
             Command::Search => &["search", "find", "notes"],
             Command::SearchTabs => &["search", "find", "tabs"],
             Command::SearchNotes => &["search", "find", "notes"],
-            Command::SearchLinear => &["linear", "search", "find"],
+            Command::SearchLinear => &["linear", "jira", "search", "find"],
             Command::SearchGitHub => &["github", "search", "find"],
             Command::SearchSlack => &["search", "find", "slack"],
             Command::ReadLink => &["links", "read", "browser"],
@@ -366,9 +369,9 @@ impl Command {
             Command::CopyMentionedTab => &["tabs", "links", "copy"],
             Command::OpenMedia => &["links", "image", "video", "media"],
             Command::OpenMergeQueue => &["github", "merge", "browser"],
-            Command::OpenProject => &["linear", "project", "browser"],
+            Command::OpenProject => &["linear", "jira", "project", "browser"],
             Command::CopyTicketId | Command::CopyTicketUrl => {
-                &["linear", "github", "ticket", "copy"]
+                &["linear", "jira", "github", "ticket", "copy"]
             }
             Command::CopyPrNumber | Command::CopyPrUrl => &["github", "pr", "copy"],
             Command::ClearImageCache => &["pr", "ticket", "images", "cache"],
@@ -551,10 +554,10 @@ pub fn pr_view_main(mut args: Vec<String>) -> ExitCode {
     pr::main(dir_arg(args.first()))
 }
 
-/// `switchboard ticket-view [dir|ID|project:<id>|owner/repo#n]`, or
-/// `--ticket <ID|project:<id>|owner/repo#n>`: a Linear
-/// ticket, a Linear project or a GitHub issue; a directory's ticket as its
-/// branch and repos.json's `tickets` give it.
+/// `switchboard ticket-view [dir|ID|jira:<ID>|project:<id>|owner/repo#n]`,
+/// or `--ticket <ID|jira:<ID>|project:<id>|owner/repo#n>`: a Linear ticket,
+/// a Jira one, a Linear project or a GitHub issue; a directory's ticket as
+/// its branch and repos.json's `tickets` give it, a bare ID its tracker's.
 pub fn ticket_view_main(args: Vec<String>) -> ExitCode {
     // `--ticket <arg>` (what the server passes): that ticket, never a
     // directory of the same name.
@@ -564,7 +567,8 @@ pub fn ticket_view_main(args: Vec<String>) -> ExitCode {
         return match ticket::Ticket::parse(arg) {
             Some(ticket::Ticket::Issue { repo, number }) => issue::main(repo, number),
             Some(ticket::Ticket::Project(id)) => project::main(id),
-            Some(ticket::Ticket::Linear(id)) => ticket::main(Some(id)),
+            Some(ticket::Ticket::Linear(id)) => ticket::main(Some((Tracker::Linear, id))),
+            Some(ticket::Ticket::Jira(id)) => ticket::main(Some((Tracker::Jira, id))),
             None => ticket::main(None),
         };
     }
@@ -572,16 +576,25 @@ pub fn ticket_view_main(args: Vec<String>) -> ExitCode {
     let given = ticket::Ticket::parse(&arg).filter(|_| !std::path::Path::new(&arg).is_dir());
     let dir = dir_arg(args.first());
     let tickets = crate::repos::tickets_known(&dir);
+    // A bare ID is the repository's tracker's.
+    let given = match given {
+        Some(ticket::Ticket::Linear(id)) if tickets.as_deref() == Some("jira") => {
+            Some(ticket::Ticket::Jira(id))
+        }
+        other => other,
+    };
     let found = given.or_else(|| ticket::of_dir(&dir, tickets.as_deref()));
     match found {
         Some(ticket::Ticket::Issue { repo, number }) => issue::main(repo, number),
         Some(ticket::Ticket::Project(id)) => project::main(id),
-        Some(ticket::Ticket::Linear(id)) => ticket::main(Some(id)),
+        Some(ticket::Ticket::Linear(id)) => ticket::main(Some((Tracker::Linear, id))),
+        Some(ticket::Ticket::Jira(id)) => ticket::main(Some((Tracker::Jira, id))),
         None => ticket::none(ticket::none_words(
             &dir,
             match tickets.as_deref() {
                 Some("github") => "No GitHub issue for this branch.",
                 Some("notes") => "No ticket: this repository keeps its work in a note's checklist.",
+                Some("jira") => "No Jira ticket in this branch or tab name.",
                 _ => "No Linear ticket in this branch or tab name.",
             },
         )),

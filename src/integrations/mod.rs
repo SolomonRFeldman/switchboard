@@ -1,8 +1,10 @@
 //! The services Switchboard reads for you, over their own APIs through `net`:
-//! GitHub (`github`) and Linear (`linear`). Each finds its credentials the
-//! way a person already keeps them, refuses outright while its setting
-//! (`github`, `linear`) is off, so turning a service off in Settings means
-//! the workspace asks it nothing by itself, and turns its failures into
+//! GitHub (`github`), Linear (`linear`) and Jira Cloud (`jira`, its rich
+//! text read by `adf`), the last two asked through `tracker`, which answers
+//! for either in Linear's shape. Each finds its credentials the way a person
+//! already keeps them, refuses outright while its setting (`github`,
+//! `linear`, `jira`) is off, so turning a service off in Settings means the
+//! workspace asks it nothing by itself, and turns its failures into
 //! `net::ServiceError`s a view can explain.
 //!
 //! The settings are about what the workspace does on its own: its lookups,
@@ -15,8 +17,11 @@
 //! the async runtime and kept a while, since reading the Keychain is a
 //! process on macOS and the security agent inspects every one.
 
+pub mod adf;
 pub mod github;
+pub mod jira;
 pub mod linear;
+pub mod tracker;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,17 +35,17 @@ use crate::{platform, settings, util};
 static RUN_BY_YOU: AtomicBool = AtomicBool::new(false);
 
 /// Marks this process as a program someone runs themselves, whose requests
-/// the `github` and `linear` settings don't stop.
+/// the `github`, `linear` and `jira` settings don't stop.
 pub fn run_by_you() {
     RUN_BY_YOU.store(true, Ordering::Relaxed);
 }
 
-/// The service a key or command tagged `#github` or `#linear` is refused
+/// The service a key or command tagged `#github`, `#linear` or `#jira` is refused
 /// for: one it is tagged with when every service it is tagged with is off
 /// in Settings, so one that works with either (M-i, the tab's ticket) is
 /// refused only with both off and decides the rest itself; `None` to run.
 pub fn tagged_off(tags: &[&str]) -> Option<&'static str> {
-    let services: Vec<&'static str> = ["github", "linear"]
+    let services: Vec<&'static str> = ["github", "linear", "jira"]
         .into_iter()
         .filter(|s| tags.contains(s))
         .collect();

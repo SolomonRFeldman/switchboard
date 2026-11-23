@@ -43,6 +43,7 @@ use crate::cmd::work_item_box::{
 };
 use crate::cmd::{work_recent, worktree_from_note};
 use crate::integrations::github;
+use crate::integrations::tracker::{self, Tracker};
 use crate::mux::keys::Action;
 use crate::mux::server::{ClientId, Event, Opened, Server};
 use crate::mux::{PaneId, TabId};
@@ -180,13 +181,14 @@ fn recent_session_dirs() -> Vec<PathBuf> {
 
 /// The repositories M-W offers, as their main clones, and `wt` outside one:
 /// `here`'s first, as for every key that makes a worktree, those whose
-/// `tickets` in repos.json is `linear` first when `linear_first`, for a
-/// Linear ticket taken before its repository. Files alone, no process.
-pub fn repositories(here: &Path, linear_first: bool) -> Vec<PathBuf> {
+/// `tickets` in repos.json is `first` first when it is given (`linear`
+/// or `jira`), for a ticket taken before its repository. Files alone, no
+/// process.
+pub fn repositories(here: &Path, first: Option<&str>) -> Vec<PathBuf> {
     let mut repos = offered_from(here, &[], Wanted::Repo);
-    if linear_first {
+    if let Some(first) = first {
         // Stable, so each group keeps the list's order.
-        repos.sort_by_key(|r| crate::repos::tickets_known(r).as_deref() != Some("linear"));
+        repos.sort_by_key(|r| crate::repos::tickets_known(r).as_deref() != Some(first));
     }
     repos
 }
@@ -261,18 +263,25 @@ fn expand(typed: &str) -> PathBuf {
 
 // ── What is asked for ───────────────────────────────────────────────────────
 
-/// Tickets separated by commas, spaces or both, each an ID or a Linear issue
-/// URL, in capitals and each once; the first piece that isn't one, as the
-/// error. Only an ID ever reaches a tab's command.
+/// Tickets separated by commas, spaces or both, each an ID or a link to a
+/// ticket on a tracker's site (`worktree::ticket_and_tracker_from`), in
+/// capitals and each once, a link's as `<tracker>:<ID>` (`worktree::ticket_arg`)
+/// so `wt` asks its site's tracker; what is wrong with the first piece that
+/// isn't one, as the error. Only an ID ever reaches a tab's command.
 pub fn parse_tickets(text: &str) -> Result<Vec<String>, String> {
     let mut tickets = Vec::new();
     for token in text.split(|c: char| c == ',' || c.is_whitespace()) {
         if token.is_empty() {
             continue;
         }
-        let ticket = worktree::ticket_from(token)
-            .ok_or_else(|| token.to_string())?
-            .to_uppercase();
+        let (tracker, id) = worktree::ticket_and_tracker_from(token).ok_or_else(|| {
+            if tracker::foreign_link(token) {
+                tracker::foreign_link_says(token)
+            } else {
+                format!("Not a ticket ID or ticket link: {token}")
+            }
+        })?;
+        let ticket = worktree::ticket_arg(tracker, &id.to_uppercase());
         if !tickets.contains(&ticket) {
             tickets.push(ticket);
         }
@@ -652,14 +661,14 @@ impl Server {
         }
     }
 
-    /// M-W: with Linear tickets on the clipboard, those first (to change
-    /// before taking them), then the repository, those whose `tickets` is
-    /// `linear` first; else the repository first, then its open work from
+    /// M-W: with tickets on the clipboard, those first (to change before
+    /// taking them), then the repository, those whose `tickets` is `linear`
+    /// or `jira` first; else the repository first, then its open work from
     /// where it keeps it (`ask_work`). Every ticket is checked before any
     /// tab opens, so a typo in one leaves none half-started.
     fn work_on_tickets(&mut self, client: ClientId, found: Found) {
-        // Linear's tickets are taken only while its setting is on.
-        let given = if settings::is_on("linear") {
+        // Tickets are taken only while a tracker's setting is on.
+        let given = if settings::is_on("linear") || settings::is_on("jira") {
             tickets_on(&found.clipboard)
         } else {
             String::new()
@@ -675,7 +684,7 @@ impl Server {
             return;
         }
         let picker = Picker::new(
-            "Linear ticket IDs or URLs, separated by commas or spaces",
+            "Ticket IDs or links, separated by commas or spaces",
             Vec::new(),
         )
         .named("tickets")
@@ -690,18 +699,18 @@ impl Server {
                 Ok(t) if !t.is_empty() => t,
                 Ok(_) => return,
                 Err(bad) => {
-                    server.say(
-                        Some(client),
-                        &format!("Not a ticket ID or Linear issue URL: {bad}"),
-                    );
+                    server.say(Some(client), &bad);
                     return;
                 }
             };
             let mut found = found;
             // Stable, so each group keeps the list's order.
-            found
-                .dirs
-                .sort_by_key(|d| crate::repos::tickets_known(d).as_deref() != Some("linear"));
+            found.dirs.sort_by_key(|d| {
+                !matches!(
+                    crate::repos::tickets_known(d).as_deref(),
+                    Some("linear" | "jira")
+                )
+            });
             server.ask_dir(
                 client,
                 "Work on tickets: the repository",
@@ -726,16 +735,20 @@ impl Server {
     }
 
     /// M-W, once the repository is picked: its open work from where its
-    /// `tickets` in repos.json keeps it, as `wt` alone lists it: Linear's
-    /// tickets assigned to you, its GitHub issues, or a note's items as M-I
+    /// `tickets` in repos.json keeps it, as `wt` alone lists it: Linear's or
+    /// Jira's tickets assigned to you, its GitHub issues, or a note's items as M-I
     /// lists them; where `tickets` isn't set, which first when more than one
     /// source is set up (`worktree_from_ticket::sources_offered`).
     fn ask_work(&mut self, client: ClientId, repo: PathBuf) {
         let source = crate::repos::tickets_known(&repo);
         let offered = match source.as_deref() {
             // A service is offered only while its setting is on.
-            Some(s @ ("linear" | "github")) if !settings::is_on(s) => {
-                let service = if s == "linear" { "Linear" } else { "GitHub" };
+            Some(s @ ("linear" | "jira" | "github")) if !settings::is_on(s) => {
+                let service = match s {
+                    "linear" => "Linear",
+                    "jira" => "Jira",
+                    _ => "GitHub",
+                };
                 self.say(
                     Some(client),
                     &format!(
@@ -754,14 +767,15 @@ impl Server {
             match source {
                 "github" => server.ask_issue(client, repo),
                 "notes" => server.ask_note(client, repo),
-                _ => server.ask_linear(client, repo),
+                "jira" => server.ask_tracked(client, repo, Tracker::Jira),
+                _ => server.ask_tracked(client, repo, Tracker::Linear),
             }
         };
         match offered.as_slice() {
             [] => {
                 self.say(
                     Some(client),
-                    "Nothing to start work from: Linear and GitHub are off in Settings (or the repository isn't on GitHub), and there is no notes directory.",
+                    "Nothing to start work from: Linear, Jira and GitHub are off in Settings (or the repository isn't on GitHub), and there is no notes directory.",
                 );
                 return;
             }
@@ -787,16 +801,16 @@ impl Server {
         );
     }
 
-    /// M-W in a repository whose work is in Linear: the open tickets
-    /// assigned to you, the newest first, Tab marking several, or IDs and
-    /// links typed in, separated by commas or spaces (Alt-Enter takes what is
-    /// typed when it matches a row).
-    fn ask_linear(&mut self, client: ClientId, repo: PathBuf) {
+    /// M-W in a repository whose work is in Linear or Jira (`tracker`): the
+    /// open tickets assigned to you there, the newest first, Tab marking
+    /// several, or IDs and links typed in, separated by commas or spaces
+    /// (Alt-Enter takes what is typed when it matches a row).
+    fn ask_tracked(&mut self, client: ClientId, repo: PathBuf, tracker: Tracker) {
         self.off_task(
             client,
             move || {
                 tokio::runtime::Handle::current().block_on(
-                    crate::cmd::worktree_from_ticket::assigned_tickets("M-W your tickets"),
+                    crate::cmd::worktree_from_ticket::assigned_tickets(tracker, "M-W your tickets"),
                 )
             },
             move |server, client, found| {
@@ -806,7 +820,7 @@ impl Server {
                         t,
                         "No open tickets assigned to you: ticket IDs or URLs".to_string(),
                     ),
-                    Ok(t) => (t, "Work on Linear tickets".to_string()),
+                    Ok(t) => (t, format!("Work on {} tickets", tracker.name())),
                     Err(e) => (
                         Vec::new(),
                         format!("Couldn't list your tickets ({e}): ticket IDs or URLs"),
@@ -828,10 +842,7 @@ impl Server {
                         match parse_tickets(&p.value) {
                             Ok(t) => tickets.extend(t),
                             Err(bad) => {
-                                server.say(
-                                    Some(client),
-                                    &format!("Not a ticket ID or Linear issue URL: {bad}"),
-                                );
+                                server.say(Some(client), &bad);
                                 return;
                             }
                         }
@@ -2000,7 +2011,7 @@ impl Server {
     /// tab each running `shape --continue <ID>`.
     fn ask_shaping(&mut self, client: ClientId, found: Found) {
         let picker = Picker::new(
-            "Linear ticket IDs or URLs, to carry on shaping each in a new tab",
+            "Ticket IDs or links, to carry on shaping each in a new tab",
             Vec::new(),
         )
         .named("tickets")
@@ -2015,10 +2026,7 @@ impl Server {
                 Ok(t) if !t.is_empty() => t,
                 Ok(_) => return,
                 Err(bad) => {
-                    server.say(
-                        Some(client),
-                        &format!("Not a ticket ID or Linear issue URL: {bad}"),
-                    );
+                    server.say(Some(client), &bad);
                     return;
                 }
             };
@@ -2064,10 +2072,24 @@ mod tests {
     #[test]
     fn tickets_are_ids_or_urls_each_once_in_capitals() {
         assert_eq!(
-            parse_tickets("abc-1, https://linear.app/x/issue/ABC-2/t ABC-1"),
-            Ok(vec!["ABC-1".to_string(), "ABC-2".to_string()])
+            parse_tickets("abc-1, https://linear.app/x/issue/ABC-2/t ABC-1 jira:ab-3"),
+            Ok(vec![
+                "ABC-1".to_string(),
+                "linear:ABC-2".to_string(),
+                "jira:AB-3".to_string()
+            ])
         );
-        assert_eq!(parse_tickets("ABC-1 $(rm)"), Err("$(rm)".to_string()));
+        assert_eq!(
+            parse_tickets("ABC-1 $(rm)"),
+            Err("Not a ticket ID or ticket link: $(rm)".to_string())
+        );
+        // No Jira site is set in the unit tests, so a Jira link's ID
+        // would name another ticket.
+        assert!(
+            parse_tickets("ABC-1 https://acme.atlassian.net/browse/AB-2")
+                .unwrap_err()
+                .contains("Jira isn't set up")
+        );
         assert_eq!(tickets_on("not a ticket"), "");
         assert_eq!(tickets_on(" ENG-4 "), "ENG-4");
     }

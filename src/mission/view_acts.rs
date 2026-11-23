@@ -53,6 +53,7 @@ pub enum Whole {
 pub struct Facts {
     pub github: bool,
     pub linear: bool,
+    pub jira: bool,
     /// Settings' `slack_background`: the server looks at Slack itself.
     pub slack_background: bool,
     /// Whether Claude Code's Slack connector is down.
@@ -156,7 +157,7 @@ pub fn of(id: Option<&ViewId>, items: &[Item], shown: &[Item], f: &Facts) -> Vec
             }
         }
         Some(ViewId::Tickets) => {
-            if f.linear {
+            if f.linear || f.jira {
                 add(
                     "Read tickets again now",
                     Whole::Refresh(crate::sources::TICKETS),
@@ -166,6 +167,7 @@ pub fn of(id: Option<&ViewId>, items: &[Item], shown: &[Item], f: &Facts) -> Vec
             let service_on = match source {
                 Some("github") => f.github,
                 Some("linear") => f.linear,
+                Some("jira") => f.jira,
                 _ => true,
             };
             if let Some(dir) = f.dir.as_ref().filter(|_| service_on) {
@@ -221,6 +223,7 @@ pub fn shape_label(source: Option<&str>) -> String {
     match source {
         Some("github") => "Shape a new ticket as a GitHub issue…".into(),
         Some("linear") => "Shape a new ticket in Linear…".into(),
+        Some("jira") => "Shape a new ticket in Jira…".into(),
         Some("notes") => "Shape a new ticket as a note's item…".into(),
         _ => "Shape a new ticket…".into(),
     }
@@ -304,6 +307,7 @@ mod tests {
         Facts {
             github: true,
             linear: true,
+            jira: true,
             slack_background: true,
             slack_mark_read: true,
             dir: Some(PathBuf::from("/code/app")),
@@ -386,6 +390,7 @@ mod tests {
         let f = Facts {
             github: false,
             linear: false,
+            jira: false,
             ..on()
         };
         for id in [ViewId::Prs, ViewId::Ci, ViewId::Landing, ViewId::Tickets] {

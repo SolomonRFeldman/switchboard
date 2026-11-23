@@ -69,6 +69,7 @@ pub fn main(args: Vec<String>) -> ExitCode {
                     eprintln!("Stored in {where_}.");
                     match service.as_str() {
                         "linear-api-key" => crate::settings::turn_on_where_it_works("linear"),
+                        "jira-api-token" => crate::settings::turn_on_where_it_works("jira"),
                         crate::day::calendar::SECRET => {
                             crate::settings::turn_on_where_it_works("view_calendar")
                         }

@@ -18,10 +18,19 @@
     "scope": "computer"
   },
   {
+    "key": "jira",
+    "category": "Integrations",
+    "label": "Jira",
+    "description": "Jira Cloud as Linear is for the repositories whose tickets are in Jira (repos.json's \"tickets\": \"jira\"): their ticket commands in M-p, ticket titles in tab names, your Jira tickets in the Tickets view and in M-j's picker; off, the workspace asks Jira nothing by itself (programs you run, such as wt and worktree-done, still do). This computer's own: off until a Jira token is stored here, which turns it on, and asked nothing before then",
+    "default": true,
+    "computer_default": false,
+    "scope": "computer"
+  },
+  {
     "key": "ticket_picker",
     "category": "Integrations",
     "label": "Choose a ticket when none is found",
-    "description": "M-i, in a tab with no ticket found, lists your Linear tickets and projects to choose its ticket from; off, M-i says the tab has no ticket, and M-p's \"Choose this tab's ticket or project…\" still lists them",
+    "description": "M-i, in a tab with no ticket found, lists your Linear tickets and projects, or your Jira tickets in a repository whose tickets are in Jira, to choose its ticket from; off, M-i says the tab has no ticket, and M-p's \"Choose this tab's ticket or project…\" still lists them",
     "default": true
   },
   {
@@ -318,7 +327,7 @@
     "key": "search_everything",
     "category": "Integrations",
     "label": "Search everything",
-    "description": "M-S-f opens a box that searches, with a chip to turn each source on or off, and lists the open tabs that name or show it and what your notes, Linear, GitHub and Slack hold for it, each read beside the pane with Enter, a tab gone to",
+    "description": "M-S-f opens a box that searches, with a chip to turn each source on or off, and lists the open tabs that name or show it and what your notes, Linear, Jira, GitHub and Slack hold for it, each read beside the pane with Enter, a tab gone to",
     "default": true
   },
   {
@@ -423,14 +432,14 @@
     "key": "pause_when_away",
     "category": "Mission control",
     "label": "Pause lookups while away",
-    "description": "Stop asking GitHub, Linear and the calendar for mission control's views, and telling the diff's stories ahead, while no terminal is attached, or the computer has been locked, or idle 10 minutes, with no key pressed in Switchboard since (from another computer over SSH too), and catch up on return",
+    "description": "Stop asking GitHub, Linear, Jira and the calendar for mission control's views, and telling the diff's stories ahead, while no terminal is attached, or the computer has been locked, or idle 10 minutes, with no key pressed in Switchboard since (from another computer over SSH too), and catch up on return",
     "default": true
   },
   {
     "key": "poll_fast",
     "category": "Mission control",
     "label": "Look often",
-    "description": "Ask GitHub and Linear every 15 seconds (the PR board every 30) and look at the Slack Home tab every 10, in place of every one or two minutes: about eight times as many requests, which can reach GitHub's 5,000 an hour",
+    "description": "Ask GitHub, Linear and Jira every 15 seconds (the PR board every 30) and look at the Slack Home tab every 10, in place of every one or two minutes: about eight times as many requests, which can reach GitHub's 5,000 an hour",
     "default": false
   },
   {
@@ -696,7 +705,7 @@
     "key": "ticket_board",
     "category": "Mission control: Tickets",
     "label": "Ticket board",
-    "description": "Mission control's Tickets view, which asks Linear about the issues assigned to you every two minutes",
+    "description": "Mission control's Tickets view, which asks Linear and Jira about the tickets assigned to you every two minutes",
     "default": true
   },
   {
@@ -724,7 +733,7 @@
     "key": "request_audit",
     "category": "Mission control: Usage",
     "label": "Requests in Usage",
-    "description": "The Usage view lists today's requests to services outside this computer (GitHub, Linear, Slack, Anthropic and the rest), by protocol and by service, as Switchboard counts them; off, it leaves them out",
+    "description": "The Usage view lists today's requests to services outside this computer (GitHub, Linear, Jira, Slack, Anthropic and the rest), by protocol and by service, as Switchboard counts them; off, it leaves them out",
     "default": true
   },
   {
@@ -1193,7 +1202,7 @@
     "key": "tab_lookups",
     "category": "Tabs and header",
     "label": "PRs and tickets in tab names",
-    "description": "Look up each tab's PR number on GitHub and its ticket's title on Linear, or its GitHub issue's title, in the background",
+    "description": "Look up each tab's PR number on GitHub and its ticket's title on Linear or Jira, or its GitHub issue's title, in the background",
     "default": true
   },
   {

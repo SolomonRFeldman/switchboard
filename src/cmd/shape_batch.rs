@@ -99,6 +99,14 @@ pub fn main(args: Vec<String>) -> ExitCode {
     if items.is_empty() {
         return usage();
     }
+    // A link on neither tracker's site names another ticket by its ID, so none
+    // opens a tab.
+    if let Some(link) = items
+        .iter()
+        .find(|i| crate::integrations::tracker::foreign_link(i))
+    {
+        return fail(&crate::integrations::tracker::foreign_link_says(link));
+    }
     let cwd = std::env::current_dir()
         .map(|d| d.to_string_lossy().into_owned())
         .unwrap_or_else(|_| ".".into());

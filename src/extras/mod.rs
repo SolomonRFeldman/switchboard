@@ -32,6 +32,7 @@ use regex::Regex;
 
 pub use serve::{Extras, KeyFate};
 
+use crate::integrations::tracker::Tracker;
 use crate::mission::ViewId;
 
 /// The commands, each with its key in tmux.conf, or none for one in the
@@ -64,7 +65,7 @@ pub enum Command {
     SetupPart,
     /// "Open a PR in the browser by number or URL".
     OpenPrNumber,
-    /// "Open a Linear ticket in the browser by ID, number or URL".
+    /// "Open a ticket in the browser by ID, number or link".
     OpenTicketId,
     /// "Log in to AWS (aws sso login) in your Chrome profile".
     AwsLogin,
@@ -190,7 +191,7 @@ impl Command {
             }
             Command::SetupPart => "Run a part of Switchboard's setup, or only check it",
             Command::OpenPrNumber => "Open a PR in the browser by number or URL",
-            Command::OpenTicketId => "Open a Linear ticket in the browser by ID, number or URL",
+            Command::OpenTicketId => "Open a ticket in the browser by ID, number or link",
             Command::AwsLogin => "Log in to AWS (aws sso login) in your Chrome profile",
             Command::Keys => "Every key, by what it is about, with / to filter",
             Command::SidebarRepo => "Filter the sidebar to a repository",
@@ -244,7 +245,7 @@ impl Command {
                 "Typed in a box that starts with the clipboard's PR; empty is this tab's PR, and a bare number is one of the pane's repository. Then the browser, or a new tab working on it (wtpr). Needs GitHub."
             }
             Command::OpenTicketId => {
-                "Typed in a box that starts with the clipboard's ticket; empty is this tab's, and a bare number takes the team key of the branch's ticket. Then the browser, or a new tab running wt. Needs Linear."
+                "Typed in a box that starts with the clipboard's ticket; empty is this tab's, and a bare number takes the team key of the branch's ticket. Then the browser, or a new tab running wt. Needs Linear or Jira."
             }
             Command::AwsLogin => {
                 "Runs switchboard aws-login in a pane beside yours, logging in to the one [sso-session] in ~/.aws/config; the pane stays until a key, so its code can be read. Needs the AWS CLI."
@@ -276,7 +277,7 @@ impl Command {
         }
     }
 
-    /// tmux.conf's tags: `#github` and `#linear` take a command out of the
+    /// tmux.conf's tags: `#github`, `#linear` and `#jira` take a command out of the
     /// palette while that service is off.
     pub fn tags(&self) -> &'static [&'static str] {
         match self {
@@ -291,7 +292,7 @@ impl Command {
             Command::UpdateTarget => &["git", "autopilot", "sync"],
             Command::CheckSetup | Command::SetupPart => &["switchboard", "setup"],
             Command::OpenPrNumber => &["github", "pr", "browser"],
-            Command::OpenTicketId => &["linear", "ticket", "browser"],
+            Command::OpenTicketId => &["linear", "jira", "ticket", "browser"],
             Command::AwsLogin => &["aws", "login", "sso"],
             Command::Keys => &["help", "keys"],
             Command::SidebarRepo | Command::SidebarAll | Command::SidebarSelect => {
@@ -395,27 +396,72 @@ pub fn pr_typed(text: &str) -> Option<PrTyped> {
 /// the team key of the ticket the branch names.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TicketTyped {
-    Url { url: String, id: String },
+    /// A ticket's link, with the tracker whose site it is on.
+    Url {
+        url: String,
+        id: String,
+        tracker: Tracker,
+    },
+    /// An ID alone, whose tracker the caller knows from where it is typed
+    /// (`tracker::for_id_in`).
     Id(String),
+}
+
+impl TicketTyped {
+    /// The ticket's ID, a link's or as typed.
+    pub fn id(&self) -> &str {
+        match self {
+            TicketTyped::Url { id, .. } | TicketTyped::Id(id) => id,
+        }
+    }
+
+    /// Its tracker: a link's site's, else `for_id`.
+    pub fn tracker_or(&self, for_id: Tracker) -> Tracker {
+        match self {
+            TicketTyped::Url { tracker, .. } => *tracker,
+            TicketTyped::Id(_) => for_id,
+        }
+    }
 }
 
 /// What was typed for a ticket, read with `branch_ticket` (the ticket the
 /// pane's branch names) for a bare number; what is wrong with it, in words,
-/// when it is none of them.
+/// when it is none of them. A link is a ticket's when it is on a tracker's
+/// site (`tracker::link_ticket`): Linear's, or the Jira site jira.json
+/// names, since its ID is asked of that tracker.
 pub fn ticket_typed(text: &str, branch_ticket: Option<&str>) -> Result<TicketTyped, String> {
-    static URL: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^https://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-[0-9]+)([/?#].*)?$")
-            .unwrap()
-    });
+    use crate::integrations::tracker;
+    ticket_typed_with(
+        text,
+        branch_ticket,
+        tracker::link_ticket,
+        tracker::foreign_link_says,
+    )
+}
+
+/// `ticket_typed`, with `of_link` giving a link's tracker and ticket when it
+/// is on a tracker's site, and `refused` what is said of one that isn't.
+fn ticket_typed_with(
+    text: &str,
+    branch_ticket: Option<&str>,
+    of_link: impl Fn(&str) -> Option<(Tracker, String)>,
+    refused: impl Fn(&str) -> String,
+) -> Result<TicketTyped, String> {
     static ID: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
     static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?([0-9]+)$").unwrap());
     let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-    if let Some(m) = URL.captures(&text) {
-        return Ok(TicketTyped::Url {
-            id: m[1].to_uppercase(),
-            url: text.clone(),
-        });
+    // A ticket's link (`tracker::id_in_link`) is its site's tracker's, or
+    // refused when it is on neither's.
+    if text.starts_with("http") && crate::integrations::tracker::id_in_link(&text).is_some() {
+        return match of_link(&text) {
+            Some((tracker, id)) => Ok(TicketTyped::Url {
+                id,
+                url: text,
+                tracker,
+            }),
+            None => Err(refused(&text)),
+        };
     }
     if ID.is_match(&text) {
         return Ok(TicketTyped::Id(text.to_uppercase()));
@@ -432,7 +478,7 @@ pub fn ticket_typed(text: &str, branch_ticket: Option<&str>) -> Result<TicketTyp
         };
         return Ok(TicketTyped::Id(format!("{}-{number}", team.to_uppercase())));
     }
-    Err(format!("Not a ticket ID, number or Linear URL: {text}"))
+    Err(format!("Not a ticket ID, number or ticket link: {text}"))
 }
 
 /// The tab number typed in Go to a tab by number's box (tab-goto.sh took digits alone).
@@ -463,6 +509,7 @@ pub fn prefill(clipboard: Option<&str>, takes: impl Fn(&str) -> bool) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::integrations::tracker;
 
     #[test]
     fn names_round_trip_and_only_three_have_keys() {
@@ -546,6 +593,15 @@ mod tests {
         assert_eq!(pr_typed("twelve"), None);
     }
 
+    /// `ticket_typed` with Jira's site `https://acme.atlassian.net`.
+    fn ticket_typed(text: &str, branch_ticket: Option<&str>) -> Result<TicketTyped, String> {
+        let of_link =
+            |url: &str| tracker::link_ticket_of(url, || Some("https://acme.atlassian.net".into()));
+        let refused =
+            |url: &str| format!("{url} isn't a link to a ticket in Linear or on your Jira site");
+        super::ticket_typed_with(text, branch_ticket, of_link, refused)
+    }
+
     #[test]
     fn a_ticket_is_a_link_an_id_or_a_number_in_the_branchs_team() {
         assert_eq!(
@@ -561,12 +617,35 @@ mod tests {
                 .unwrap_err()
                 .contains("like ABC-34")
         );
+        let linear = "https://linear.app/team/issue/abc-9/a-title";
         assert_eq!(
-            ticket_typed("https://linear.app/team/issue/abc-9/a-title", None),
+            ticket_typed(linear, None),
             Ok(TicketTyped::Url {
-                url: "https://linear.app/team/issue/abc-9/a-title".into(),
-                id: "ABC-9".into()
+                url: linear.into(),
+                id: "ABC-9".into(),
+                tracker: Tracker::Linear,
             })
+        );
+        for jira in [
+            "https://acme.atlassian.net/browse/ab-9",
+            "https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-9",
+            "https://acme.atlassian.net/jira/software/projects/AB/boards/1?quickFilter=12&selectedIssue=AB-9",
+            "https://acme.atlassian.net/issues/?jql=project%3DAB&selectedIssue=AB-9",
+        ] {
+            assert_eq!(
+                ticket_typed(jira, None),
+                Ok(TicketTyped::Url {
+                    url: jira.into(),
+                    id: "AB-9".into(),
+                    tracker: Tracker::Jira,
+                })
+            );
+        }
+        // Its ID would name another ticket in either tracker.
+        assert!(
+            ticket_typed("https://other.atlassian.net/browse/AB-9", None)
+                .unwrap_err()
+                .contains("isn't a link to a ticket")
         );
         assert!(ticket_typed("what", None).unwrap_err().starts_with("Not a"));
     }

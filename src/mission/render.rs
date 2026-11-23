@@ -192,16 +192,20 @@ pub fn unlinked(text: &str) -> String {
 }
 
 fn short_url(url: &str) -> String {
+    // A Linear ticket's link, or a Jira one's on an Atlassian site.
     static TICKET: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)").expect("a regex")
+        Regex::new(r"linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)|\.atlassian\.net(?:/\S*?)?(?:/browse/|[?&]selectedIssue=)([A-Za-z][A-Za-z0-9]*-\d+)").expect("a regex")
     });
     static PR: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"github\.com/[^/]+/[^/]+/(?:pull|issues)/(\d+)").expect("a regex")
     });
     static HOST: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^https?://(?:www\.)?([^/?#]+)").expect("a regex"));
-    if let Some(m) = TICKET.captures(url) {
-        return m[1].to_uppercase();
+    if let Some(id) = TICKET
+        .captures(url)
+        .and_then(|m| m.get(1).or_else(|| m.get(2)))
+    {
+        return id.as_str().to_uppercase();
     }
     if let Some(m) = PR.captures(url) {
         return format!("#{}", &m[1]);
@@ -2507,7 +2511,13 @@ pub fn item_beside(m: &Mission) -> Option<(&Item, &'static str, &'static str)> {
     let view = m.current()?;
     let (field, place, board_at) = match view.id {
         ViewId::Prs => ("body", crate::views::pr::PLACE, 0),
-        ViewId::Tickets => ("description", crate::views::ticket::PLACE, 0),
+        ViewId::Tickets => {
+            let tracker = m
+                .chosen_item()
+                .map(|i| crate::sources::tickets::tracker_of(&i.data))
+                .unwrap_or(crate::integrations::tracker::Tracker::Linear);
+            ("description", crate::views::ticket::place(tracker), 0)
+        }
         ViewId::Autopilot => ("plan", PLAN_PLACE, PILOT_BOARD_AT),
         _ => return None,
     };
@@ -2703,7 +2713,7 @@ fn ticket_about(item: &Item, side_w: usize, theme: &Theme, images: Option<&Image
     with_description(
         head,
         d["description"].as_str().unwrap_or(""),
-        crate::views::ticket::PLACE,
+        crate::views::ticket::place(crate::sources::tickets::tracker_of(d)),
         inner,
         theme,
         images,
@@ -6223,6 +6233,19 @@ pub(super) fn finish(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ticket_link_shows_as_its_identifier() {
+        assert_eq!(short_url("https://linear.app/acme/issue/eng-4/x"), "ENG-4");
+        assert_eq!(short_url("https://acme.atlassian.net/browse/AB-7"), "AB-7");
+        assert_eq!(
+            short_url(
+                "https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-8"
+            ),
+            "AB-8"
+        );
+        assert_eq!(short_url("https://example.com/browse/AB-7"), "example.com");
+    }
     use crate::items::ViewData;
     use crate::mission::Snapshot;
     use crate::mux::TabId;
@@ -10782,6 +10805,7 @@ mod tests {
         let shown = Shown {
             github: true,
             linear: true,
+            jira: true,
             easy: false,
         };
         let items = keymap::items(&bindings, shown, &counts);
@@ -10855,6 +10879,7 @@ mod tests {
         let shown = Shown {
             github: true,
             linear: true,
+            jira: true,
             easy: false,
         };
         let items = keymap::items(&bindings, shown, &counts);

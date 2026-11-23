@@ -30,6 +30,7 @@ use serde_json::Value;
 use super::markdown::decode_entities;
 use super::pager::{self, Content};
 use crate::integrations::github;
+use crate::integrations::tracker::Tracker;
 use crate::net::{self, Audit};
 use crate::{connector, settings, util};
 
@@ -41,9 +42,6 @@ const DROP: &[&str] = &[
     "button", "template",
 ];
 
-static LINEAR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^https://linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-[0-9]+)").unwrap()
-});
 static SLACK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https://[^/]*slack\.com/").unwrap());
 static PULL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/pull/([0-9]+)").unwrap()
@@ -57,7 +55,7 @@ static GOOGLE: LazyLock<Regex> = LazyLock::new(|| {
 /// What a link is, to the link view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Kind {
-    Ticket(String),
+    Ticket((Tracker, String)),
     Slack,
     Note(PathBuf),
     Pr {
@@ -71,8 +69,16 @@ pub enum Kind {
 
 /// What a link is, or why it can't be read here.
 pub fn kind_of(url: &str, notes: &Path) -> Result<Kind, String> {
-    if let Some(c) = LINEAR.captures(url) {
-        return Ok(Kind::Ticket(c[1].to_ascii_uppercase()));
+    kind_with(url, notes, crate::integrations::tracker::link_ticket(url))
+}
+
+// `kind_of`, given the tracker and ticket the link is to, if any.
+fn kind_with(url: &str, notes: &Path, ticket: Option<(Tracker, String)>) -> Result<Kind, String> {
+    // A ticket's page on a tracker's site (Linear's, or the Jira site in
+    // jira.json); a ticket link elsewhere is read as a page, never as a
+    // tracker's ticket of the same identifier.
+    if let Some(id) = ticket {
+        return Ok(Kind::Ticket(id));
     }
     if SLACK.is_match(url) {
         return Ok(Kind::Slack);
@@ -402,9 +408,15 @@ mod tests {
     #[test]
     fn links_are_told_apart() {
         let notes = std::env::temp_dir();
+        // Which links are the tracker's tickets is tracker::own_link_of's,
+        // tested there; here only that one is read as a ticket.
         assert_eq!(
-            kind_of("https://linear.app/team/issue/abc-12/title", &notes),
-            Ok(Kind::Ticket("ABC-12".into()))
+            kind_with(
+                "https://x.test/a",
+                &notes,
+                Some((Tracker::Linear, "ABC-12".into()))
+            ),
+            Ok(Kind::Ticket((Tracker::Linear, "ABC-12".into())))
         );
         assert_eq!(
             kind_of("https://acme.slack.com/archives/C1/p2", &notes),

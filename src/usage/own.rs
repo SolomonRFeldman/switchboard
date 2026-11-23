@@ -158,6 +158,36 @@ pub const OWN_FILES: &[OwnFile] = &[
         ],
     },
     OwnFile {
+        file: "jira.json",
+        category: "Jira (jira.json)",
+        rows: &[
+            row(
+                "jiraSite",
+                "Site",
+                Kind::Text,
+                "Your Jira Cloud site (https://<yours>.atlassian.net), for the repositories whose tickets are in Jira",
+            ),
+            row(
+                "jiraEmail",
+                "Email",
+                Kind::Text,
+                "The email of the Atlassian account your API token (the stored secret jira-api-token) belongs to",
+            ),
+            row(
+                "jiraProject",
+                "Project",
+                Kind::Text,
+                "The project key /shape files tickets in (ABC)",
+            ),
+            row(
+                "jiraLabels",
+                "Labels",
+                Kind::List,
+                "The labels /shape puts on a new ticket",
+            ),
+        ],
+    },
+    OwnFile {
         file: "browser.json",
         category: "Browser (browser.json)",
         rows: &[
@@ -739,8 +769,9 @@ pub fn landing_rows(
             match tickets.as_deref() {
                 Some("github") => "Its work is kept in its GitHub issues: /shape files one, wt <number> starts one, M-i opens the branch's, and autopilot takes those carrying its issue label".to_string(),
                 Some("notes") => "Its work is kept in a note's checklist: /shape adds an item and its plan, wt starts one, and autopilot works the note chosen in its settings".to_string(),
+                Some("jira") => "Its work is kept in Jira: /shape files a ticket, wt <ticket> or <number> starts one, M-i opens the branch's; autopilot can't take it".to_string(),
                 Some(_) => "Its work is kept in Linear: /shape files a ticket, wt <ticket> starts one, M-i opens the branch's; autopilot can't take it".to_string(),
-                None => "Where its work is kept, GitHub issues, Linear or a note's checklist, which /shape files new work in, wt <number> starts it from, M-i opens a branch's ticket from and autopilot takes it from; not set, each of them refuses".to_string(),
+                None => "Where its work is kept, GitHub issues, Linear, Jira or a note's checklist, which /shape files new work in, wt <number> starts it from, M-i opens a branch's ticket from and autopilot takes it from; not set, each of them refuses".to_string(),
             },
             json!(tickets.as_deref().unwrap_or("unset")),
         ));

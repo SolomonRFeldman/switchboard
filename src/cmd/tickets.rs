@@ -1,6 +1,6 @@
 //! `switchboard tickets [<dir>]`: where the repository at `<dir>` (the
 //! current directory by default) keeps its work, which `/shape` files new
-//! work in, on the first line: `github` (its issues), `linear`, or `notes`
+//! work in, on the first line: `github` (its issues), `linear`, `jira`, or `notes`
 //! (a note's checklist with a plan note each), repos.json's `tickets`
 //! (`repos::tickets_at`), the one place it is decided. It has no default:
 //! while it isn't set, the command prints nothing, says on stderr how to set

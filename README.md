@@ -12,9 +12,9 @@ It is opinionated: the defaults are how it is meant to be used, and Settings (`M
 
 - **The sidebar** lists every tab grouped by what its Claude is doing (Needs you, Working, Review, CI, Landing, Idle and more), and `M-a` goes to the next tab that needs you. Notifications collect what happened while you looked elsewhere.
 - **Mission control** (`M-Space`) holds every view of your work and your day, in groups: Work (Tabs, Landing, Autopilot, Routines, Reopen), Code (PRs, tickets, CI), Day (Calendar, Reminders, Slack, the Linear Inbox, Notifications) and System (Usage, Resources, Settings, Keys).
-- **From idea to merged change:** Notes is a Markdown notes app with Vim's editing; `/shape` turns an idea into a checklist item and a plan, a GitHub issue or a Linear ticket, wherever the repository keeps its work; `/wt` hands a tab the item, issue or ticket to build in a worktree of its own; the review loop has Codex or Claude review it until two rounds come back clean; and landing puts it on the default branch one change at a time.
+- **From idea to merged change:** Notes is a Markdown notes app with Vim's editing; `/shape` turns an idea into a checklist item and a plan, a GitHub issue or a Linear or Jira ticket, wherever the repository keeps its work; `/wt` hands a tab the item, issue or ticket to build in a worktree of its own; the review loop has Codex or Claude review it until two rounds come back clean; and landing puts it on the default branch one change at a time.
 - **Autopilot** works through a note's checklist on its own, several items at once: each tab builds its item, reviews it, tests it and lands it.
-- **The diff** (`M-d`) shows a branch side by side with its story, and the PR and ticket views (`M-v`, `M-i`) show a branch's PR, with whether it can merge, and its Linear ticket or GitHub issue beside its tab.
+- **The diff** (`M-d`) shows a branch side by side with its story, and the PR and ticket views (`M-v`, `M-i`) show a branch's PR, with whether it can merge, and its Linear or Jira ticket or GitHub issue beside its tab.
 - **Away from the computer:** the Slack relay gives each tab a thread in a Slack DM, so you can answer a waiting tab from your phone, and the phone app (`switchboard phone`) serves your Claude tabs to your phone over your tailnet, their prompts as buttons and a push when one waits on you; routines run a prompt of yours on a schedule as a headless Claude; and the computer stays awake while agents work.
 
 ## Requirements
@@ -24,7 +24,7 @@ It is opinionated: the defaults are how it is meant to be used, and Settings (`M
 - To install a release, OpenSSH's `ssh-keygen`, 8.1 or later, which the installer checks the release's signature with. macOS and most Linux distributions ship it; a minimal Linux image may need its OpenSSH client package.
 - A terminal with 24-bit color. On a Mac, Option has to act as Alt, since every `M-` key is Alt: in Ghostty, `macos-option-as-alt = true`; in iTerm2, Settings, Profiles, Keys, "Left Option key: Esc+"; in Terminal, Settings, Profiles, Keyboard, "Use Option as Meta key". `switchboard setup` offers to set it in Ghostty, Terminal and iTerm2, and in Ghostty to send the Cmd keys Notes' easy mode reads. Pictures in notes need a terminal that draws kitty's graphics protocol, such as Ghostty or kitty, or one that draws sixel and says so when asked (Windows Terminal 1.22 or later, foot, WezTerm, xterm with sixel), for which the workspace draws them as sixel by default; for one that draws sixel but doesn't say, set Settings' "Image protocol" to sixel.
 
-Nothing else has to be installed. The phone app alone needs [Tailscale](https://tailscale.com), on a Mac, with HTTPS certificates on for the tailnet. GitHub, Linear, the calendar, Slack and Codex each turn on a part of it when you have them; the [guide](docs/guide.md) says what each needs.
+Nothing else has to be installed. The phone app alone needs [Tailscale](https://tailscale.com), on a Mac, with HTTPS certificates on for the tailnet. GitHub, Linear or Jira, the calendar, Slack and Codex each turn on a part of it when you have them; the [guide](docs/guide.md) says what each needs.
 
 ## Install
 
@@ -92,7 +92,7 @@ sh install.sh --notes)
 - **Your `~/.claude/settings.json` stays yours.** Nothing of Switchboard's goes in it; setup only takes out the statusline and hooks an earlier version added there. Each skill allows the commands it runs itself, and the plugin lets the few Switchboard commands its instructions use run without asking, and keeps Claude from reading `.env` files or running `git pull`.
 - **Without the plugin** (Settings' "Load Switchboard as a plugin" off, Claude Code older than 2.1.280, or your organization's managed settings setting `disableSideloadFlags`), setup puts the hooks, statusline, permissions, an import of Switchboard's part of CLAUDE.md and the skills in `~/.claude` instead, for every Claude of yours. An install of an earlier version is asked once which it wants.
 - **Your terminal and tools:** it offers to make Option act as Alt in a Mac's terminal (in Ghostty, with Notes' easy mode's Cmd keys), and to tidy what a tmux version of Switchboard left; lazygit in a pane's place gets Switchboard's settings at launch, layered under your config, which is never written.
-- **What's missing:** it lists the optional parts not set up (the GitHub and Linear sign-ins, Chrome, ffmpeg, Codex and the rest), each with what it is for.
+- **What's missing:** it lists the optional parts not set up (the GitHub, Linear and Jira sign-ins, Chrome, ffmpeg, Codex and the rest), each with what it is for.
 
 As a plugin, a Claude session outside Switchboard runs none of its hooks, so the Slack relay hears only of sessions in the workspace.
 

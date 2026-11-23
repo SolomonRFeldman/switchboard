@@ -7,25 +7,28 @@
 //!
 //! The work is any of:
 //!
-//! - a Linear ticket, its ID (`ABC-12`) or link, asked of Linear's API
-//!   (`integrations::linear`), here;
+//! - a Linear or Jira ticket, its ID (`ABC-12`) or link, asked of its
+//!   tracker (`integrations::tracker`), here: a link's site's, an ID the
+//!   tracker of the repository it is typed in (Jira where its `tickets` is
+//!   `jira`, else Linear);
 //! - a GitHub issue, `#12`, its link, `--issue <number>` (autopilot passes
 //!   `<owner>/<repo>#<number>`), or `12` in a repository whose `tickets`
 //!   in repos.json is `github` (worktree_from_issue.rs); `12` where it is
-//!   `linear` is the ticket of that number in linear.json's `linearTeam`;
+//!   `linear` is the ticket of that number in linear.json's `linearTeam`,
+//!   and where it is `jira` in jira.json's `jiraProject`;
 //! - a note's checklist item, `--note <note> --item <line>`
 //!   (worktree_from_note.rs), `--note` alone asking which item.
 //!
 //! With none, it asks (src/ui/alone.rs, the workspace's picker in the
 //! shell's own terminal): the repository's open work from where its
-//! `tickets` keeps it, Linear's tickets assigned to you newest first,
+//! `tickets` keeps it, Linear's or Jira's tickets assigned to you newest first,
 //! GitHub's open issues as M-p's "Start work on a GitHub issue" lists them
 //! (yours first, each group newest first), or a note's unticked items as
 //! M-I lists them, the note asked first; where `tickets` isn't set, which source first when more
-//! than one is set up (`linear` and `github` each by its setting, notes by
-//! a notes directory). Outside a repository it asks which repository, as
-//! M-W lists them; for a Linear ticket only once the ticket is found, the
-//! repositories whose `tickets` is `linear` first.
+//! than one is set up (`linear`, `jira` and `github` each by its setting,
+//! notes by a notes directory). Outside a repository it asks which
+//! repository, as M-W lists them; for a ticket only once the ticket is
+//! found, the repositories whose `tickets` is its tracker first.
 //!
 //! `<path>` defaults to `.claude/worktrees`, resolved against the main
 //! clone, so it works from inside an existing worktree.
@@ -58,7 +61,8 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use crate::cmd::worktree_from_note::{self as note, failed_in_autopilot};
-use crate::integrations::{github, linear};
+use crate::integrations::github;
+use crate::integrations::tracker::{self, Tracker};
 use crate::ui::{Menu, MenuOption, PickItem, Picker, alone};
 use crate::util;
 use crate::worktree::{self, Fetched, Given, Purpose};
@@ -69,10 +73,12 @@ fn usage() -> ExitCode {
          worktree-from-ticket [path] --note <note> [--item <line>] [--prompt <text>] [--target <branch>]\n       \
          worktree-from-ticket [path] --issue <number> [--prompt <text>] [--target <branch>]\n       \
          worktree-from-ticket init <zsh|bash>\n\n\
-         <work> is a Linear ticket (ABC-12, or its link), a GitHub issue (#12, or its\n\
-         link), or a number alone, from where repos.json's tickets keeps the work:\n\
-         github, the issue; linear, the ticket in linear.json's linearTeam. With none,\n\
-         it lists the repository's open work to pick from.\n\n\
+         <work> is a Linear or Jira ticket (ABC-12, or its link), a GitHub issue (#12,\n\
+         or its link), or a number alone, from where repos.json's tickets keeps the\n\
+         work: github, the issue; linear, the ticket in linear.json's linearTeam;\n\
+         jira, the ticket in jira.json's jiraProject. An ID is Jira's where tickets is\n\
+         jira, else Linear's. With none, it lists the repository's open work to pick\n\
+         from.\n\n\
          Examples:\n  \
          worktree-from-ticket ABC-123\n  \
          worktree-from-ticket '#12'\n  \
@@ -164,7 +170,7 @@ pub fn parse_identifier(input: &str) -> Option<(String, u64)> {
     Some((key.to_uppercase(), number.parse().ok()?))
 }
 
-/// What Linear says of the ticket, as far as the worktree needs it.
+/// What the tracker says of the ticket, as far as the worktree needs it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Issue {
     pub identifier: String,
@@ -175,21 +181,14 @@ pub struct Issue {
     pub state: Option<(String, String)>,
 }
 
-const ISSUE: &str = "query IssueByIdentifier($number: Float!, $key: String!) { \
-     issues(filter: { number: { eq: $number }, team: { key: { eq: $key } } }) { \
-     nodes { identifier title branchName state { name type } } } }";
-
-fn fetch_issue(key: &str, number: u64) -> Result<Issue, String> {
-    let data = util::block_on(linear::graphql(
-        ISSUE,
-        json!({ "number": number, "key": key }),
+fn fetch_issue(tracker: Tracker, key: &str, number: u64) -> Result<Issue, String> {
+    let node = util::block_on(tracker::issue(
+        tracker,
+        &format!("{key}-{number}"),
         "wt: the ticket",
     ))
-    .map_err(|e| e.to_string())?;
-    let node = data
-        .pointer("/issues/nodes/0")
-        .filter(|n| n.is_object())
-        .ok_or_else(|| format!("no Linear issue found for {key}-{number}"))?;
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| format!("no {} issue found for {key}-{number}", tracker.name()))?;
     let text = |p: &str| node.pointer(p).and_then(Value::as_str).map(str::to_string);
     Ok(Issue {
         identifier: text("/identifier").unwrap_or_else(|| format!("{key}-{number}")),
@@ -199,12 +198,19 @@ fn fetch_issue(key: &str, number: u64) -> Result<Issue, String> {
     })
 }
 
+/// Where the skills, and a session `wt` starts on a Jira ticket, read how to
+/// read and edit one: the shape skill's guide, in Switchboard's plugin.
+const TRACKER_GUIDE: &str = "~/.local/share/switchboard/plugin/skills/shape/tracker.md";
+
 /// The prompt Claude starts with. The state goes in as a fact rather than
 /// something the session has to look up, keyed on its type, not its name: a
 /// workspace can call its completed state anything ("Shipped"), while the
 /// type is one of Linear's fixed set, whose closed ones are completed,
-/// canceled and duplicate. The clause is dropped if Linear gives no state.
-pub fn prompt_for(issue: &Issue, extra: &str) -> String {
+/// canceled and duplicate (Jira's answer mapped to them). The clause is
+/// dropped if the tracker gives no state. A Jira ticket's prompt names its
+/// tracker and the guide to reading and editing one (`TRACKER_GUIDE`),
+/// since the session reaches it through another connector than Linear's.
+pub fn prompt_for(issue: &Issue, tracker: Tracker, extra: &str) -> String {
     let state_clause = issue
         .state
         .as_ref()
@@ -214,7 +220,13 @@ pub fn prompt_for(issue: &Issue, extra: &str) -> String {
         .state
         .as_ref()
         .is_some_and(|(_, kind)| matches!(kind.as_str(), "completed" | "canceled" | "duplicate"));
-    let mut prompt = format!("Work on ticket {}{state_clause}. ", issue.identifier);
+    let mut prompt = match tracker {
+        Tracker::Jira => format!(
+            "Work on Jira ticket {}{state_clause}, reading and editing it as {TRACKER_GUIDE} says. ",
+            issue.identifier
+        ),
+        Tracker::Linear => format!("Work on ticket {}{state_clause}. ", issue.identifier),
+    };
     if closed {
         prompt.push_str(
             "That state is closed, so before doing anything else tell me and confirm whether we want to reopen it; \
@@ -379,7 +391,7 @@ enum Asked {
     /// A GitHub issue: `#12` (its number), or its link
     /// (`<owner>/<repo>#<number>`).
     Issue(String),
-    /// A Linear ticket's ID or link, as written.
+    /// A Linear or Jira ticket's ID or link, as written.
     Ticket(String),
 }
 
@@ -458,7 +470,16 @@ fn start(given: &Given, trusted: bool, made: &mut bool) -> Result<ExitCode, Stri
         _ => return Ok(usage()),
     };
     match asked {
-        Some(Asked::Ticket(ticket)) => linear_ticket(&rest, &ticket, trusted),
+        Some(Asked::Ticket(ticket)) => {
+            // A link names its tracker; an ID is the repository's here.
+            let tracker = match worktree::ticket_and_tracker_from(&ticket) {
+                Some((Some(tracker), _)) => tracker,
+                _ => worktree::repo_root()
+                    .map(|root| tracker::for_id_in(&root))
+                    .unwrap_or(Tracker::Linear),
+            };
+            tracked_ticket(&rest, tracker, &ticket, trusted)
+        }
         Some(Asked::Issue(issue)) => {
             in_a_repository()?;
             super::worktree_from_issue::run(&rest, &issue, made)
@@ -482,8 +503,9 @@ fn name_of(root: &Path) -> String {
 }
 
 /// `wt <number>`: the work of that number from where the repository's
-/// `tickets` in repos.json keeps it, a GitHub issue, or a Linear ticket of
-/// linear.json's `linearTeam`; refused where `tickets` isn't set, whose
+/// `tickets` in repos.json keeps it, a GitHub issue, a Linear ticket of
+/// linear.json's `linearTeam`, or a Jira one of jira.json's `jiraProject`;
+/// refused where `tickets` isn't set, whose
 /// number could be either, or is `notes`, whose items have no numbers.
 fn by_provider(
     rest: &Given,
@@ -505,13 +527,25 @@ fn by_provider(
                         crate::files::shown("linear.json")
                     )
                 })?;
-            linear_ticket(rest, &format!("{team}-{n}"), trusted)
+            tracked_ticket(rest, Tracker::Linear, &format!("{team}-{n}"), trusted)
+        }
+        Some("jira") => {
+            let project = util::read_json(crate::files::file("jira.json"))
+                .and_then(|v| Some(v.get("jiraProject")?.as_str()?.trim().to_string()))
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "{name} keeps its work in Jira, and a number alone needs its project: set jiraProject in {}, or give the ticket's key (ABC-{n})",
+                        crate::files::shown("jira.json")
+                    )
+                })?;
+            tracked_ticket(rest, Tracker::Jira, &format!("{project}-{n}"), trusted)
         }
         Some(_) => Err(format!(
             "{name} keeps its work in a note's checklist, which has no numbers: run wt alone to pick an item, or give a GitHub issue as #{n}"
         )),
         None => Err(format!(
-            "{name} has no ticket provider, so {n} could be a GitHub issue or a Linear ticket: give the issue as #{n} or the ticket's ID, or set its Tickets in Settings (\"tickets\": \"github\" or \"linear\" in {})",
+            "{name} has no ticket provider, so {n} could be a GitHub issue or a Linear or Jira ticket: give the issue as #{n} or the ticket's ID, or set its Tickets in Settings (\"tickets\": \"github\", \"linear\" or \"jira\" in {})",
             crate::files::shown("repos.json")
         )),
     }
@@ -533,19 +567,19 @@ fn can_ask() -> Result<(), String> {
 
 /// The repository the work starts in: the one here, else one picked.
 fn in_a_repository() -> Result<PathBuf, String> {
-    pick_repository(false)
+    pick_repository(None)
 }
 
-/// The repository here, else one picked as M-W lists them, `linear_first`
-/// putting those whose `tickets` is `linear` first. The program goes on
-/// from it, as if run there.
-fn pick_repository(linear_first: bool) -> Result<PathBuf, String> {
+/// The repository here, else one picked as M-W lists them, `first` putting
+/// those whose `tickets` is it (`linear`, `jira`) first. The program goes
+/// on from it, as if run there.
+fn pick_repository(first: Option<&str>) -> Result<PathBuf, String> {
     if let Ok(root) = worktree::repo_root() {
         return Ok(root);
     }
     can_ask().map_err(|_| "not in a git repository".to_string())?;
     let here = std::env::current_dir().unwrap_or_else(|_| crate::paths::home());
-    let repos = crate::cmd::work::repositories(&here, linear_first);
+    let repos = crate::cmd::work::repositories(&here, first);
     let items = repos
         .iter()
         .map(|d| PickItem::new(crate::paths::tilde(d), d.to_string_lossy()))
@@ -571,6 +605,9 @@ pub fn sources_offered(root: &Path) -> Vec<&'static str> {
     if crate::settings::is_on("linear") {
         out.push("linear");
     }
+    if crate::settings::is_on("jira") {
+        out.push("jira");
+    }
     if crate::settings::is_on("github") && crate::sources::repo::origin_of(root).is_some() {
         out.push("github");
     }
@@ -584,6 +621,7 @@ pub fn sources_offered(root: &Path) -> Vec<&'static str> {
 pub fn source_words(source: &str) -> &'static str {
     match source {
         "linear" => "A Linear ticket assigned to you",
+        "jira" => "A Jira ticket assigned to you",
         "github" => "A GitHub issue",
         _ => "A note's checklist item",
     }
@@ -595,13 +633,13 @@ fn picked(rest: &Given, root: &Path, trusted: bool, made: &mut bool) -> Result<E
     let source = match crate::repos::tickets_at(root)? {
         // A service is offered only while its setting is on.
         Some(source)
-            if matches!(source.as_str(), "linear" | "github")
+            if matches!(source.as_str(), "linear" | "jira" | "github")
                 && !crate::settings::is_on(&source) =>
         {
-            let service = if source == "linear" {
-                "Linear"
-            } else {
-                "GitHub"
+            let service = match source.as_str() {
+                "linear" => "Linear",
+                "jira" => "Jira",
+                _ => "GitHub",
             };
             return Err(format!(
                 "{service} is off in Settings, and {} keeps its work there: name the work, or turn {service} on",
@@ -614,7 +652,7 @@ fn picked(rest: &Given, root: &Path, trusted: bool, made: &mut bool) -> Result<E
             match offered.as_slice() {
                 [] => {
                     return Err(format!(
-                        "{} has no ticket source: turn on Linear or GitHub in Settings, or keep a note's checklist",
+                        "{} has no ticket source: turn on Linear, Jira or GitHub in Settings, or keep a note's checklist",
                         name_of(root)
                     ));
                 }
@@ -633,8 +671,12 @@ fn picked(rest: &Given, root: &Path, trusted: bool, made: &mut bool) -> Result<E
         }
     };
     match source.as_str() {
-        "linear" => match pick_ticket()? {
-            Some(ticket) => linear_ticket(rest, &ticket, trusted),
+        "linear" => match pick_ticket(Tracker::Linear)? {
+            Some(ticket) => tracked_ticket(rest, Tracker::Linear, &ticket, trusted),
+            None => Ok(ExitCode::from(1)),
+        },
+        "jira" => match pick_ticket(Tracker::Jira)? {
+            Some(ticket) => tracked_ticket(rest, Tracker::Jira, &ticket, trusted),
             None => Ok(ExitCode::from(1)),
         },
         "github" => match pick_issue(root)? {
@@ -657,12 +699,42 @@ const ASSIGNED: &str = "query { viewer { assignedIssues(first: 100, orderBy: cre
      filter: { state: { type: { nin: [\"completed\", \"canceled\", \"duplicate\"] } } }) { \
      nodes { identifier title createdAt state { type } } } } }";
 
-/// The open Linear tickets assigned to you, newest first: their IDs and
-/// titles, the titles without control characters, since someone else
-/// wrote them.
-pub async fn assigned_tickets(source: &str) -> anyhow::Result<Vec<(String, String)>> {
-    let data = linear::graphql(ASSIGNED, json!({}), source).await?;
-    Ok(assigned_of(&data))
+/// The open tickets assigned to you in `tracker`, newest first (Jira's
+/// the latest updated first): their IDs and titles, the titles without
+/// control characters, since someone else wrote them.
+pub async fn assigned_tickets(
+    tracker: Tracker,
+    source: &str,
+) -> anyhow::Result<Vec<(String, String)>> {
+    match tracker {
+        Tracker::Linear => {
+            let data = crate::integrations::linear::graphql(ASSIGNED, json!({}), source).await?;
+            Ok(assigned_of(&data))
+        }
+        Tracker::Jira => {
+            // Finished since now: none, so the open ones alone.
+            let now = jiff::Timestamp::now().to_string();
+            let found = tracker::assigned(Tracker::Jira, &now, source).await?;
+            Ok(open_of(&found))
+        }
+    }
+}
+
+/// `assigned_tickets` from Jira's open and finished tickets, in Linear's
+/// shape: the open ones, in their order.
+fn open_of(found: &[Value]) -> Vec<(String, String)> {
+    found
+        .iter()
+        .filter(|n| {
+            let kind = n.pointer("/state/type").and_then(Value::as_str);
+            !matches!(kind, Some("completed" | "canceled" | "duplicate"))
+        })
+        .filter_map(|n| {
+            let text = |k: &str| n.get(k).and_then(Value::as_str).map(str::to_string);
+            let title: String = text("title")?.chars().filter(|c| !c.is_control()).collect();
+            Some((text("identifier")?, title))
+        })
+        .collect()
 }
 
 /// `assigned_tickets` from Linear's answer.
@@ -693,18 +765,18 @@ fn assigned_of(data: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Which Linear ticket, from those assigned to you, or one typed in.
-fn pick_ticket() -> Result<Option<String>, String> {
+/// Which ticket of `tracker`'s, from those assigned to you, or one typed in.
+fn pick_ticket(tracker: Tracker) -> Result<Option<String>, String> {
     let tickets =
-        util::block_on(assigned_tickets("wt: your tickets")).map_err(|e| e.to_string())?;
+        util::block_on(assigned_tickets(tracker, "wt: your tickets")).map_err(|e| e.to_string())?;
     let items = tickets
         .iter()
         .map(|(id, title)| PickItem::new(format!("{id} {title}"), id.clone()))
         .collect();
     let title = if tickets.is_empty() {
-        "No open tickets assigned to you: a ticket's ID to work on"
+        "No open tickets assigned to you: a ticket's ID to work on".to_string()
     } else {
-        "Work on a Linear ticket"
+        format!("Work on a {} ticket", tracker.name())
     };
     let picker = Picker::new(title, items)
         .named("tickets")
@@ -716,7 +788,10 @@ fn pick_ticket() -> Result<Option<String>, String> {
     };
     let value = picked.value.trim();
     if !worktree::looks_like_ticket(value) {
-        return Err(format!("not a ticket ID or Linear link: {value}"));
+        return Err(format!(
+            "not a ticket ID or {} link: {value}",
+            tracker.name()
+        ));
     }
     Ok(Some(value.to_string()))
 }
@@ -833,13 +908,24 @@ fn pick_item(root: &Path, note_name: &str) -> Result<Option<usize>, String> {
     Ok(alone::pick(picker)?.and_then(|p| p.value.parse().ok()))
 }
 
-// ── A Linear ticket ─────────────────────────────────────────────────────────
+// ── A Linear or Jira ticket ─────────────────────────────────────────────────
 
-/// A Linear ticket's worktree, in the repository here, else, once the
-/// ticket is found, in one picked, those whose `tickets` is `linear` first.
-fn linear_ticket(given: &Given, ticket: &str, trusted: bool) -> Result<ExitCode, String> {
+/// A ticket's worktree, in the repository here, else, once the ticket is
+/// found, in one picked, those whose `tickets` is its tracker first.
+fn tracked_ticket(
+    given: &Given,
+    tracker: Tracker,
+    ticket: &str,
+    trusted: bool,
+) -> Result<ExitCode, String> {
     if given.last("--target").is_some() {
-        return Err("--target takes a note's item or a GitHub issue, not a Linear ticket".into());
+        return Err(format!(
+            "--target takes a note's item or a GitHub issue, not a {} ticket",
+            tracker.name()
+        ));
+    }
+    if crate::integrations::tracker::foreign_link(ticket) {
+        return Err(crate::integrations::tracker::foreign_link_says(ticket));
     }
     let extra = worktree::one_line(&given.all("--prompt").join(" "));
     let target = given
@@ -847,9 +933,13 @@ fn linear_ticket(given: &Given, ticket: &str, trusted: bool) -> Result<ExitCode,
         .first()
         .map(String::as_str)
         .unwrap_or(worktree::DEFAULT_WORKTREE_DIR);
-    let (key, number) = parse_identifier(ticket)
-        .ok_or_else(|| format!("could not parse a Linear ticket identifier from \"{ticket}\""))?;
-    let issue = fetch_issue(&key, number)?;
+    let (key, number) = parse_identifier(ticket).ok_or_else(|| {
+        format!(
+            "could not parse a {} ticket identifier from \"{ticket}\"",
+            tracker.name()
+        )
+    })?;
+    let issue = fetch_issue(tracker, &key, number)?;
     let branch = issue.branch_name.clone().unwrap_or_else(|| {
         format!(
             "{}-{}",
@@ -858,7 +948,7 @@ fn linear_ticket(given: &Given, ticket: &str, trusted: bool) -> Result<ExitCode,
         )
     });
     eprintln!("Ticket:   {} — {}", issue.identifier, issue.title);
-    let root = pick_repository(true)?;
+    let root = pick_repository(Some(tracker.key()))?;
     let path = worktree::normalize(&root.join(target).join(&branch));
 
     eprintln!(
@@ -900,7 +990,7 @@ fn linear_ticket(given: &Given, ticket: &str, trusted: bool) -> Result<ExitCode,
     }
     crate::cmd::clone_build::start(&path);
     worktree::link_local_settings(&root, &path).map_err(|e| e.to_string())?;
-    let mut prompt = prompt_for(&issue, &extra);
+    let mut prompt = prompt_for(&issue, tracker, &extra);
     if let Some(words) = start.as_ref().and_then(|s| s.offline.as_ref()) {
         // Offline, wt couldn't ask whether someone pushed the ticket's
         // branch since the clone last fetched; whose code it holds is the
@@ -979,7 +1069,7 @@ mod tests {
             branch_name: None,
             state: Some(("Shipped".into(), "completed".into())),
         };
-        let prompt = prompt_for(&issue, "start small");
+        let prompt = prompt_for(&issue, Tracker::Linear, "start small");
         assert!(prompt.starts_with(
             "Work on ticket ENG-1, which is in the \"Shipped\" state. That state is closed"
         ));
@@ -988,6 +1078,12 @@ mod tests {
             state: None,
             ..issue
         };
-        assert!(prompt_for(&open, "").starts_with("Work on ticket ENG-1. Before changing"));
+        assert!(
+            prompt_for(&open, Tracker::Linear, "")
+                .starts_with("Work on ticket ENG-1. Before changing")
+        );
+        assert!(prompt_for(&open, Tracker::Jira, "").starts_with(
+            "Work on Jira ticket ENG-1, reading and editing it as ~/.local/share/switchboard/plugin/skills/shape/tracker.md says. Before changing"
+        ));
     }
 }

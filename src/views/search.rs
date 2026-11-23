@@ -44,7 +44,7 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use super::conversation;
-use crate::integrations::{github, linear};
+use crate::integrations::{github, tracker};
 use crate::mission::pane_search;
 use crate::mux::{PaneId, TabId};
 use crate::{connector, settings};
@@ -77,7 +77,7 @@ impl Source {
         match self {
             Source::Tabs => "Tab",
             Source::Notes => "Note",
-            Source::Linear => "Linear",
+            Source::Linear => tickets_name(),
             Source::GitHub => "GitHub",
             Source::Slack => "Slack",
         }
@@ -97,7 +97,12 @@ impl Source {
         match self {
             Source::Tabs => "tab: ",
             Source::Notes => "note: ",
-            Source::Linear => "linear: ",
+            // The tracker on's own name, Linear's with both; either names
+            // it (`named`).
+            Source::Linear => match tracker::on().as_slice() {
+                [tracker::Tracker::Jira] => "jira: ",
+                _ => "linear: ",
+            },
             Source::GitHub => "gh: ",
             Source::Slack => "slack: ",
         }
@@ -113,7 +118,7 @@ impl Source {
         match word.to_lowercase().as_str() {
             "tab" | "tabs" => Some(Source::Tabs),
             "note" | "notes" => Some(Source::Notes),
-            "linear" => Some(Source::Linear),
+            "linear" | "jira" | "ticket" | "tickets" => Some(Source::Linear),
             "gh" | "github" => Some(Source::GitHub),
             "slack" => Some(Source::Slack),
             _ => None,
@@ -126,7 +131,8 @@ impl Source {
 pub fn starts_a_source(text: &str) -> bool {
     let text = text.to_lowercase();
     [
-        "tab", "tabs", "note", "notes", "linear", "gh", "github", "slack",
+        "tab", "tabs", "note", "notes", "linear", "jira", "ticket", "tickets", "gh", "github",
+        "slack",
     ]
     .iter()
     .any(|w| w.starts_with(&text))
@@ -336,7 +342,7 @@ pub fn available() -> Vec<Source> {
         .into_iter()
         .filter(|s| match s {
             Source::Tabs | Source::Notes => true,
-            Source::Linear => settings::is_on("linear"),
+            Source::Linear => !tracker::on().is_empty(),
             Source::GitHub => settings::is_on("github"),
             Source::Slack => asks_slack(),
         })
@@ -698,21 +704,42 @@ pub fn notes(dir: &Path, query: &str) -> Vec<Found> {
         .collect()
 }
 
-/// Linear's issue search.
+/// What the tickets' source is called: the one tracker on's name, or
+/// "Ticket" with both.
+fn tickets_name() -> &'static str {
+    match tracker::on().as_slice() {
+        [one] => one.name(),
+        _ => "Ticket",
+    }
+}
+
+/// The search of each ticket tracker on, Linear's results first; an error
+/// only when every one asked failed.
 pub async fn linear(query: &str) -> Result<Vec<Found>, String> {
-    let data = linear::graphql(
-        "query($q: String!, $first: Int!) { searchIssues(term: $q, first: $first) { nodes { identifier title description url state { name } } } }",
-        json!({ "q": query, "first": LIMIT }),
-        SOURCE,
+    let asked = tracker::on();
+    let answers = futures_util::future::join_all(
+        asked
+            .iter()
+            .map(|t| tracker::search(*t, query, LIMIT, SOURCE)),
     )
-    .await
-    .map_err(|e| e.to_string())?;
-    let nodes = data
-        .pointer("/searchIssues/nodes")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    Ok(nodes
+    .await;
+    let mut found = Vec::new();
+    let mut failed = Vec::new();
+    for (tracker, answer) in asked.into_iter().zip(answers) {
+        match answer {
+            Ok(nodes) => found.extend(tracker_found(tracker, &nodes, query)),
+            Err(e) => failed.push(format!("{}: {e}", tracker.name())),
+        }
+    }
+    if found.is_empty() && !failed.is_empty() {
+        return Err(failed.join("\n"));
+    }
+    Ok(found)
+}
+
+/// One tracker's search results as found.
+fn tracker_found(tracker: tracker::Tracker, nodes: &[Value], query: &str) -> Vec<Found> {
+    nodes
         .iter()
         .map(|t| {
             let text = |p: &str| {
@@ -722,7 +749,7 @@ pub async fn linear(query: &str) -> Result<Vec<Found>, String> {
                     .to_string()
             };
             let title = clean(&format!("{} {}", text("/identifier"), text("/title")));
-            let about = format!("Linear ticket, {}", text("/state/name"));
+            let about = format!("{} ticket, {}", tracker.name(), text("/state/name"));
             Found {
                 source: Source::Linear,
                 context: Context::in_body(&title, &about, &text("/description"), query, &title),
@@ -731,7 +758,7 @@ pub async fn linear(query: &str) -> Result<Vec<Found>, String> {
                 link: text("/url"),
             }
         })
-        .collect())
+        .collect()
 }
 
 /// Issues and pull requests in the repositories of `dirs`, through

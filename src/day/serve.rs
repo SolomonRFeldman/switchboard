@@ -1333,6 +1333,7 @@ impl Server {
             let parts = standup::Parts {
                 github: settings::is_on("github"),
                 linear: settings::is_on("linear"),
+                jira: settings::is_on("jira"),
                 summary: settings::is_on("standup_summary"),
             };
             let tab_dirs = self.day_tab_dirs();

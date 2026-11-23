@@ -44,6 +44,7 @@ pub mod statusline;
 pub mod tabs;
 pub mod tickets;
 pub mod today_save;
+pub mod tracker;
 pub mod try_;
 pub mod try_sealed;
 pub mod update_main;
@@ -170,6 +171,11 @@ pub const COMMANDS: &[Command] = &[
         about: "One of the workspace's settings, as Settings reads it; with a value (or --reset), changes it",
     },
     Command {
+        name: "tracker",
+        run: tracker::main,
+        about: "The repository's ticket tracker, Linear or Jira, for the skills: its name, where tickets are filed, or a ticket as JSON",
+    },
+    Command {
         name: "platform",
         run: platform::main,
         about: "What differs between macOS and Linux, for the shell scripts",
@@ -242,7 +248,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "worktree-done",
         run: worktree_done::main,
-        about: "Remove the worktrees whose Linear ticket is done or canceled, picked from a list",
+        about: "Remove the worktrees whose ticket is done or canceled, picked from a list",
     },
     Command {
         name: "worktree-from-branch",
@@ -362,7 +368,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "ticket-view",
         run: crate::views::ticket_view_main,
-        about: "A Linear ticket with its comments, paged (M-i runs it beside a pane)",
+        about: "A ticket with its comments, paged (M-i runs it beside a pane)",
     },
     Command {
         name: "link-view",

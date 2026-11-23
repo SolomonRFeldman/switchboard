@@ -1,20 +1,22 @@
-//! `shape`: starts a Claude session that shapes a Linear ticket with you.
+//! `shape`: starts a Claude session that shapes a ticket with you.
 //! Ported from bin/shape.
 //!
 //! ```text
 //! shape <what the ticket is about>
-//! shape <linear-ticket-id-or-url> [what to do with it]
-//! shape --continue <linear-ticket-id-or-url> [what to do with it]
-//! shape --linear | --github | --notes <what the work is about>
+//! shape <ticket-id-or-url> [what to do with it]
+//! shape --continue <ticket-id-or-url> [what to do with it]
+//! shape --linear | --jira | --github | --notes <what the work is about>
 //! ```
 //!
-//! Claude reads the code, checks Linear for tickets that already cover it,
+//! Claude reads the code, checks the tracker for tickets that already cover it,
 //! drafts the ticket, and creates or updates it once you approve. The
 //! instructions live in the /shape skill, so the same thing works inside a
 //! session you already have; this only gets the session started in the
 //! right place. `--continue` (before the ticket or right after it) carries
 //! straight on refining a ticket, without /shape first asking whether to
-//! review it. A source (`--linear`, `--github` or `--notes`, before the
+//! review it. A ticket's link is passed on as written, so /shape reads it
+//! from its site's tracker. A source (`--linear`, `--jira`, `--github` or
+//! `--notes`, before the
 //! rest) is passed on to /shape, which files the work there rather than
 //! where the repository keeps it; M-p's note actions and shape-batch pass
 //! `--linear`, the Linear flows they are named for.
@@ -40,13 +42,13 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn usage() -> ExitCode {
     eprintln!(
-        "Usage: shape [--linear | --github | --notes] <what the work is about>\n       shape [--continue] <linear-ticket-id-or-url> [what to do with it]\n\nExamples:\n  shape \"people can't tell which phase is active\"\n  shape ABC-123\n  shape ABC-123 split out the API part"
+        "Usage: shape [--linear | --jira | --github | --notes] <what the work is about>\n       shape [--continue] <ticket-id-or-url> [what to do with it]\n\nExamples:\n  shape \"people can't tell which phase is active\"\n  shape ABC-123\n  shape ABC-123 split out the API part"
     );
     ExitCode::from(1)
 }
 
-/// The ticket a word names: an issue URL's, or the word when it is an
-/// identifier.
+/// The ticket a word names: a link's to a ticket on a tracker's site, or
+/// the word when it is an identifier (`worktree::ticket_from`).
 pub fn ticket_in(word: &str) -> Option<String> {
     worktree::ticket_from(word)
 }
@@ -59,7 +61,7 @@ pub struct Asked {
 }
 
 /// The sources /shape takes over the repository's.
-pub const SOURCES: [&str; 3] = ["--linear", "--github", "--notes"];
+pub const SOURCES: [&str; 4] = ["--linear", "--jira", "--github", "--notes"];
 
 /// Reads the arguments (with `--continue` and a source taken out) into the
 /// prompt and the tab's name: a ticket alone, or a ticket first and then
@@ -86,7 +88,13 @@ pub fn asked(args: &[String], carry_on: bool, source: Option<&str>) -> Asked {
         Some(s) => format!("/shape {s}"),
         None => "/shape".to_string(),
     };
-    let prompt = match ticket {
+    // A link, or an ID naming its tracker (`jira:AB-12`), as written,
+    // which says its tracker; an ID alone in capitals.
+    let named = match &ticket {
+        Some(_) if first.contains(':') => Some(first.to_string()),
+        other => other.clone(),
+    };
+    let prompt = match named {
         Some(t) => format!(
             "{shape} {t}{}{}",
             if carry_on { " --continue" } else { "" },
@@ -129,6 +137,14 @@ pub fn main(args: Vec<String>) -> ExitCode {
     let (source, carry_on, rest) = flags(&args);
     if rest.is_empty() {
         return usage();
+    }
+    // A link on neither tracker's site names another ticket by its ID.
+    if let Some(link) = rest[0]
+        .split_whitespace()
+        .next()
+        .filter(|w| crate::integrations::tracker::foreign_link(w))
+    {
+        return fail(&crate::integrations::tracker::foreign_link_says(link));
     }
     let asked = asked(&rest, carry_on, source.as_deref());
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -245,7 +261,7 @@ mod tests {
                 None
             )
             .prompt,
-            "/shape ENG-5"
+            "/shape https://linear.app/w/issue/ENG-5/title"
         );
     }
 

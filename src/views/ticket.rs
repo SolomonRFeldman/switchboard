@@ -1,4 +1,4 @@
-//! A Linear ticket as the ticket view shows it (tmux/ticket-view.sh, and
+//! A Linear or Jira ticket as the ticket view shows it (tmux/ticket-view.sh, and
 //! pr-view.js's `ticket`, which laid it out as its page in Linear does):
 //! its title, the facts from its side panel, who opened it and when, the
 //! description, sub-issues, related tickets and links, then the comments,
@@ -8,8 +8,9 @@
 //! name gives (a "Shaping ABC-123: ..." tab before there is a branch), which
 //! the server works out before it opens the pane. As the PR view does, the
 //! copy last read is shown at once (`~/.cache/switchboard/ticket-view/`)
-//! and the ticket read again in the background, through Linear's API with
-//! the key `integrations::linear` finds.
+//! (Jira's in a folder of its own) and the ticket read again in the
+//! background, from its tracker through `integrations::tracker`, which
+//! answers for Jira in Linear's shape.
 //!
 //! The ticket is laid out as board 14 draws it (`board`,
 //! through `super::board`): the description, sub-issues and comment
@@ -26,23 +27,34 @@ use serde_json::{Value, json};
 use super::board::{self, Board, Part, Piece};
 use super::follow;
 use super::pager::{self, Content};
+use crate::integrations::tracker::{self, Tracker};
 use crate::integrations::{github, linear};
 use crate::photos::{Service, Who};
 use crate::ui::kit::{self, Mark, Tone};
 use crate::{paths, util};
 
 const SOURCE: &str = "M-i ticket view";
-/// Where a diagram that can't be drawn here is shown properly.
+/// Where a diagram that can't be drawn here is shown properly: a Linear
+/// ticket's or project's.
 pub const PLACE: &str = "M-l in Linear";
 
-const QUERY: &str = "query($id: String!) { issue(id: $id) { \
-    identifier title url description createdAt updatedAt priorityLabel estimate \
-    state { name type } assignee { name } creator { id name } project { name } cycle { number name } \
-    labels { nodes { name } } parent { identifier title } \
-    children { nodes { identifier title url state { name type } } } \
-    relations { nodes { type relatedIssue { identifier title url state { name type } } } } \
-    attachments { nodes { title url metadata } } \
-    comments(first: 100) { nodes { id body createdAt parent { id } user { id name } botActor { name } } } } }";
+/// `PLACE` for a ticket of `tracker`.
+pub fn place(tracker: Tracker) -> &'static str {
+    match tracker {
+        Tracker::Linear => PLACE,
+        Tracker::Jira => "M-l in Jira",
+    }
+}
+
+/// The tracker a ticket read for the view came from, as `fetch` marks it
+/// (`tracker`), Linear for a copy from before it was marked.
+pub fn tracker_of(issue: &Value) -> Tracker {
+    issue
+        .get("tracker")
+        .and_then(Value::as_str)
+        .and_then(Tracker::of)
+        .unwrap_or(Tracker::Linear)
+}
 
 static ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
@@ -69,8 +81,8 @@ static ISSUE_IN_TEXT: LazyLock<Regex> = LazyLock::new(|| {
 });
 static ISSUE_BRANCH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^issue/([0-9]+)(?:-|$)").unwrap());
-static LINEAR_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(^|[^(<])<?(https://linear\.app/[^/\s]+/issue/([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
+static TICKET_URL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(^|[^(<])<?(https://(?:linear\.app/[^/\s]+/issue/|[\w.-]+\.atlassian\.net(?:/browse/|(?:/[^\s)>?&]*)?[?&](?:[^\s)>]*&)?selectedIssue=))([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
         .unwrap()
 });
 
@@ -86,8 +98,9 @@ pub fn id_for_dir(dir: &Path) -> Option<String> {
     id_in_branch(&place.branch)
 }
 
-/// The Linear ticket a branch names, in capitals, never the end of a
-/// project's ID: what the tab's name and M-i read from a branch alike.
+/// The ticket ID a branch names (a Linear or Jira one), in capitals, never
+/// the end of a project's ID: what the tab's name and M-i read from a
+/// branch alike.
 pub fn id_in_branch(branch: &str) -> Option<String> {
     branch_ticket(branch).map(|(_, id)| id)
 }
@@ -159,10 +172,14 @@ pub fn project_in_name(name: &str) -> Option<String> {
 }
 
 /// What a tab's work is on, by the service that keeps it: a Linear ticket,
-/// a Linear project, or one of the repository's GitHub issues.
+/// a Linear project, a Jira ticket, or one of the repository's GitHub
+/// issues.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ticket {
     Linear(String),
+    /// A Jira ticket, by its key (`AB-12`), in a repository whose tickets
+    /// are in Jira or from a link to the Jira site.
+    Jira(String),
     /// A project, by what Linear's `project(id:)` takes: its `P-<TEAM>-<n>`
     /// identifier, or its slug.
     Project(String),
@@ -174,10 +191,11 @@ pub enum Ticket {
 
 impl Ticket {
     /// What `switchboard ticket-view` and `@tab_ticket` take:
-    /// `ENG-42`, `project:P-ENG-4`, `owner/repo#12`.
+    /// `ENG-42`, `jira:AB-12`, `project:P-ENG-4`, `owner/repo#12`.
     pub fn arg(&self) -> String {
         match self {
             Ticket::Linear(id) => id.clone(),
+            Ticket::Jira(id) => format!("jira:{id}"),
             Ticket::Project(id) => format!("project:{id}"),
             Ticket::Issue { repo, number } => format!("{repo}#{number}"),
         }
@@ -204,6 +222,9 @@ impl Ticket {
         if let Some(id) = text.strip_prefix("project:").filter(|id| !id.is_empty()) {
             return Some(Ticket::Project(id.to_string()));
         }
+        if let Some(id) = text.strip_prefix("jira:") {
+            return id_of(id).map(Ticket::Jira);
+        }
         if PROJECT_ID.is_match(text) {
             return Some(Ticket::Project(text.to_ascii_uppercase()));
         }
@@ -216,7 +237,7 @@ impl Ticket {
     /// How it is named to you: `ENG-42`, `P-ENG-4`, `owner/repo#12`.
     pub fn shown(&self) -> String {
         match self {
-            Ticket::Project(id) => id.clone(),
+            Ticket::Project(id) | Ticket::Jira(id) => id.clone(),
             other => other.arg(),
         }
     }
@@ -235,7 +256,26 @@ impl Ticket {
     pub fn service(&self) -> &'static str {
         match self {
             Ticket::Issue { .. } => "github",
+            Ticket::Jira(_) => "jira",
             _ => "linear",
+        }
+    }
+
+    /// The tracker and identifier of a ticket one keeps, Linear's or
+    /// Jira's: not a project or a GitHub issue.
+    pub fn tracked(&self) -> Option<(Tracker, &str)> {
+        match self {
+            Ticket::Linear(id) => Some((Tracker::Linear, id)),
+            Ticket::Jira(id) => Some((Tracker::Jira, id)),
+            _ => None,
+        }
+    }
+
+    /// A ticket of `tracker` by its identifier.
+    pub fn of(tracker: Tracker, id: String) -> Ticket {
+        match tracker {
+            Tracker::Linear => Ticket::Linear(id),
+            Tracker::Jira => Ticket::Jira(id),
         }
     }
 
@@ -245,6 +285,7 @@ impl Ticket {
             Ticket::Issue { repo, number } => {
                 Some(format!("https://github.com/{repo}/issues/{number}"))
             }
+            Ticket::Jira(id) => crate::integrations::jira::url_of(id),
             _ => None,
         }
     }
@@ -280,7 +321,8 @@ pub fn issue_number_of_branch(branch: &str) -> Option<u64> {
 
 /// The ticket a directory's branch is for, from git's own files, by the
 /// repository's ticket provider (repos.json's `tickets`): its GitHub issue
-/// with `github`, its Linear ticket with `linear`, and none with `notes`
+/// with `github`, its Linear ticket with `linear`, its Jira one with
+/// `jira`, and none with `notes`
 /// or none set, since nothing guesses where a repository keeps its work.
 pub fn of_dir(dir: &Path, provider: Option<&str>) -> Option<Ticket> {
     first_on(of_dir_all(dir, provider))
@@ -300,6 +342,10 @@ pub fn of_dir_all(dir: &Path, provider: Option<&str>) -> Vec<Ticket> {
     match provider {
         Some("github") => issue().into_iter().collect(),
         Some("linear") => linear().into_iter().collect(),
+        Some("jira") => id_in_branch(&place.branch)
+            .map(Ticket::Jira)
+            .into_iter()
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -350,6 +396,16 @@ pub fn in_name(name: &str) -> Option<Ticket> {
     }
 }
 
+/// A ticket found by a bare ID (a name's, a branch's) as the tracker of
+/// the repository whose `tickets` is `provider` keeps it: Jira's in one
+/// whose tickets are in Jira, else as it is.
+pub fn in_repo(ticket: Ticket, provider: Option<&str>) -> Ticket {
+    match ticket {
+        Ticket::Linear(id) if provider == Some("jira") => Ticket::Jira(id),
+        other => other,
+    }
+}
+
 /// Every ticket ID `text` names, each once, in order.
 pub fn ids_in(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -390,7 +446,7 @@ pub fn issues_in(text: &str) -> Vec<Ticket> {
 /// A bare link to a Linear ticket as a link named by its identifier, which
 /// then reads as the identifier, clickable (pr-view.js's `tidy`).
 pub fn tidy(text: &str) -> String {
-    LINEAR_URL
+    TICKET_URL
         .replace_all(text, "${1}[${3}](${2})")
         .into_owned()
 }
@@ -667,16 +723,16 @@ pub fn board(issue: &Value, now: jiff::Timestamp) -> Board {
     Board {
         main,
         panel,
-        place: PLACE.into(),
+        place: place(tracker_of(issue)).into(),
         keys: [
-            ("j/k", "scroll"),
-            ("/", "search"),
-            ("r", "read again"),
-            ("M-l", "in Linear"),
-            ("M-v", "its PR"),
-            ("M-c", "back to Claude"),
+            ("j/k", "scroll".to_string()),
+            ("/", "search".to_string()),
+            ("r", "read again".to_string()),
+            ("M-l", format!("in {}", tracker_of(issue).name())),
+            ("M-v", "its PR".to_string()),
+            ("M-c", "back to Claude".to_string()),
         ]
-        .map(|(k, w)| (k.to_string(), w.to_string()))
+        .map(|(k, w)| (k.to_string(), w))
         .to_vec(),
         actions: Vec::new(),
         title: String::new(),
@@ -688,15 +744,16 @@ fn content(issue: &Value) -> Content {
     Content::Board(board(issue, jiff::Timestamp::now()))
 }
 
-/// The ticket from Linear, or why it couldn't be read.
-pub async fn fetch(id: &str) -> Result<Value, String> {
-    let data = linear::graphql(QUERY, json!({ "id": id }), SOURCE)
+/// The ticket from its tracker, marked with it (`tracker_of`), or why it
+/// couldn't be read.
+pub async fn fetch(tracker: Tracker, id: &str) -> Result<Value, String> {
+    let name = tracker.name();
+    let mut issue = tracker::detail(tracker, id, SOURCE)
         .await
-        .map_err(|e| format!("Couldn't read {id} from Linear: {e}"))?;
-    data.get("issue")
-        .filter(|i| i.is_object())
-        .cloned()
-        .ok_or_else(|| format!("Linear has no ticket {id}."))
+        .map_err(|e| format!("Couldn't read {id} from {name}: {e}"))?
+        .ok_or_else(|| format!("{name} has no ticket {id}."))?;
+    issue["tracker"] = Value::from(tracker.key());
+    Ok(issue)
 }
 
 /// A ticket or project of yours, for the picker that chooses a tab's.
@@ -850,6 +907,40 @@ pub async fn open_issues_at(dir: &Path) -> Result<Lists, String> {
     })
 }
 
+/// The open Jira tickets assigned to you, the latest updated first, for the
+/// picker that chooses the tab's ticket in a repository whose `tickets` is
+/// `jira`. Asks Jira, so off the server's task.
+pub async fn yours_in_jira() -> Result<Lists, String> {
+    const SOURCE: &str = "choose a tab's ticket";
+    // Finished since now: none, so the open ones alone.
+    let now = jiff::Timestamp::now().to_string();
+    let found = tracker::assigned(Tracker::Jira, &now, SOURCE)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Lists {
+        found: jira_rows(&found),
+        missing: Vec::new(),
+    })
+}
+
+/// `yours_in_jira`'s rows, in Jira's order.
+pub fn jira_rows(found: &[Value]) -> Vec<Yours> {
+    let text = |v: &Value, path: &str| name_at(v, path).unwrap_or_default();
+    found
+        .iter()
+        .filter(|t| t.get("completedAt").is_none_or(Value::is_null))
+        .filter(|t| t.get("canceledAt").is_none_or(Value::is_null))
+        .filter_map(|t| {
+            let id = name_at(t, "/identifier")?;
+            Some(Yours {
+                row: format!("{id}  {} · {}", text(t, "/title"), text(t, "/state/name")),
+                ticket: Ticket::Jira(id),
+                created: String::new(),
+            })
+        })
+        .collect()
+}
+
 /// `open_issues_at`'s rows, in GitHub's order.
 pub fn open_issue_rows(repo: &github::Repo, issues: Vec<github::OpenIssue>) -> Vec<Yours> {
     issues
@@ -869,29 +960,34 @@ pub fn open_issue_rows(repo: &github::Repo, issues: Vec<github::OpenIssue>) -> V
         .collect()
 }
 
-pub(crate) fn cache_file(id: &str) -> std::path::PathBuf {
-    paths::cache_dir()
-        .join("ticket-view")
-        .join(format!("{id}.json"))
+// The last copy of a ticket, kept for each tracker apart (Linear's where it
+// always was), so one tracker's ticket never shows as the other's of the
+// same identifier.
+pub(crate) fn cache_file(tracker: Tracker, id: &str) -> std::path::PathBuf {
+    let dir = paths::cache_dir().join("ticket-view");
+    match tracker {
+        Tracker::Jira => dir.join("jira").join(format!("{id}.json")),
+        Tracker::Linear => dir.join(format!("{id}.json")),
+    }
 }
 
 /// The ticket view: the last copy at once, then the ticket read again, and
 /// again as it changes (`follow`).
-pub fn main(id: Option<String>) -> ExitCode {
-    let Some(id) = id else {
+pub fn main(ticket: Option<(Tracker, String)>) -> ExitCode {
+    let Some((tracker, id)) = ticket else {
         return pager::run(
-            Content::Failed("No Linear ticket in this branch or tab name.".into()),
+            Content::Failed("No ticket in this branch or tab name.".into()),
             None,
             None,
         );
     };
-    let cache = cache_file(&id);
+    let cache = cache_file(tracker, &id);
     let cached = util::read_json(&cache);
     let initial = match &cached {
         Some(issue) => content(issue),
         None => Content::Loading(format!("Reading {id}...")),
     };
-    let read = move || util::block_on(fetch(&id));
+    let read = move || util::block_on(fetch(tracker, &id));
     let file = move || Some(cache.clone());
     pager::run_following(initial, follow::start(cached, file, read, content))
 }
@@ -1010,6 +1106,12 @@ mod tests {
             tidy("[x](https://linear.app/t/issue/AB-1)"),
             "[x](https://linear.app/t/issue/AB-1)",
             "a link already named stays"
+        );
+        assert_eq!(
+            tidy(
+                "See https://acme.atlassian.net/browse/AB-3 and https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-4"
+            ),
+            "See [AB-3](https://acme.atlassian.net/browse/AB-3) and [AB-4](https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-4)"
         );
     }
 

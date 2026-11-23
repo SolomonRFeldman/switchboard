@@ -259,13 +259,17 @@ impl Sources {
 
 /// Whether a view is on: its service's setting and its own. The Landing
 /// view needs no service, since its landing queues are files; its merge
-/// queues are asked of GitHub only with the github setting on too.
+/// queues are asked of GitHub only with the github setting on too. The
+/// Tickets view's service is Linear or Jira, either on.
 pub fn enabled(name: &str) -> bool {
     let (service, own) = match name {
         PRS => ("github", "pr_board"),
         CI => ("github", "view_ci"),
         LANDING => return settings::is_on("view_landing"),
-        TICKETS => ("linear", "ticket_board"),
+        TICKETS => {
+            return (settings::is_on("linear") || settings::is_on("jira"))
+                && settings::is_on("ticket_board");
+        }
         INBOX => ("linear", "view_inbox"),
         _ => return false,
     };

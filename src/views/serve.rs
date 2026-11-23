@@ -35,7 +35,8 @@ use super::search_box::SearchBox;
 use super::shown::{self, Shown};
 use super::ticket::Ticket;
 use super::{Command, ViewsEvent, page, seen, ticket};
-use crate::integrations::{github, linear};
+use crate::integrations::github;
+use crate::integrations::tracker::{self, Tracker};
 use crate::mux::server::{ClientId, Event, Server};
 use crate::mux::{Direction, PaneId, TabId};
 use crate::net::{self, ErrorKind};
@@ -94,6 +95,15 @@ fn linear_workspace() -> Option<String> {
         })
 }
 
+/// A ticket's link made without asking: a Linear one's at the workspace
+/// written down, a Jira one's on its site. `None` when neither is.
+fn ticket_link(tracker: Tracker, id: &str) -> Option<String> {
+    match tracker {
+        Tracker::Linear => linear_workspace().map(|w| format!("https://linear.app/{w}/issue/{id}")),
+        Tracker::Jira => crate::integrations::jira::url_of(id),
+    }
+}
+
 fn is_readable(url: &str) -> bool {
     shown::safe(url) && (url.starts_with("file://") || links::host_of(url).is_some())
 }
@@ -114,8 +124,9 @@ fn rows(found: &[Shown]) -> Vec<PickItem> {
 }
 
 /// The service whose list M-i's picker offers, by the repository's ticket
-/// provider (repos.json's `tickets`): GitHub's issues with `github`,
-/// Linear's tickets and projects with `linear` or none set.
+/// provider (repos.json's `tickets`): GitHub's issues with `github`, your
+/// Jira tickets with `jira`, Linear's tickets and projects with `linear` or
+/// none set.
 /// What M-i and "Choose this tab's ticket or project…" say in a
 /// repository whose tickets are GitHub's while GitHub is off: said each
 /// time, not once as a tip, since the key still works for Linear's
@@ -124,10 +135,10 @@ const ISSUES_OFF: &str =
     "This repository keeps its tickets as GitHub issues, and GitHub is off in Settings.";
 
 fn picker_service(provider: Option<&str>) -> &'static str {
-    if provider == Some("github") {
-        "github"
-    } else {
-        "linear"
+    match provider {
+        Some("github") => "github",
+        Some("jira") => "jira",
+        _ => "linear",
     }
 }
 
@@ -402,10 +413,13 @@ impl Server {
         ) && let Some(slot) = self.panes.get_mut(&view)
         {
             slot.opts.insert(LINK_URL.into(), url.to_string());
-            // A Linear link is read by the ticket view, which follows its
-            // ticket here as M-i's does.
-            if let Ok(page::Kind::Ticket(id)) = page::kind_of(url, std::path::Path::new("")) {
-                slot.opts.insert(TICKET_ID.into(), id);
+            // A Linear or Jira link is read by the ticket view, which
+            // follows its ticket here as M-i's does.
+            if let Ok(page::Kind::Ticket((tracker, id))) =
+                page::kind_of(url, std::path::Path::new(""))
+            {
+                slot.opts
+                    .insert(TICKET_ID.into(), Ticket::of(tracker, id).arg());
                 self.views_follow(None);
             }
         }
@@ -510,31 +524,39 @@ impl Server {
     ) -> Option<Ticket> {
         let t = self.tabs.get(&tab)?;
         let mut found = ticket::of_dir_all(dir, provider);
+        // A ticket ID in a name is the repository's tracker's.
+        let in_name = |name: &str| ticket::in_name(name).map(|t| ticket::in_repo(t, provider));
         found.extend(
             t.opts
                 .get("@tab_name")
-                .and_then(|n| ticket::in_name(n))
-                .or_else(|| ticket::in_name(&t.name)),
+                .and_then(|n| in_name(n))
+                .or_else(|| in_name(&t.name)),
         );
         // The label shown counts only for a repository keeping its work in
-        // Linear, whose kind it names; a name you gave counts whatever it is.
+        // Linear or Jira, whose kind it names; a name you gave counts
+        // whatever it is.
         found.extend(
-            ticket::in_name(&self.tab_label_without_pr_title(tab))
-                .filter(|_| provider == Some("linear")),
+            in_name(&self.tab_label_without_pr_title(tab))
+                .filter(|_| matches!(provider, Some("linear" | "jira"))),
         );
         ticket::first_on(found)
     }
 
-    /// The Linear ticket a tab's work is on, for what reads Linear's
-    /// tickets alone (the branch's ticket copied, its image): the one the
-    /// branch names, whatever repos.json's `tickets` says, so a branch
-    /// started for an issue still gives it; else one chosen for the tab;
-    /// else one its names or label give.
-    pub(crate) fn ticket_here(&self, tab: TabId, dir: &std::path::Path) -> Option<String> {
-        let linear = |t: Ticket| match t {
-            Ticket::Linear(id) => Some(id),
-            _ => None,
-        };
+    /// The Linear or Jira ticket a tab's work is on, for what reads those
+    /// trackers' tickets alone (the branch's ticket copied, its image): the
+    /// one the branch names, whatever repos.json's `tickets` says, so a
+    /// branch started for an issue still gives it; else one chosen for the
+    /// tab; else one its names or label give; a bare ID being Jira's in a
+    /// repository whose tickets are in Jira, else Linear's.
+    pub(crate) fn ticket_here(
+        &self,
+        tab: TabId,
+        dir: &std::path::Path,
+    ) -> Option<(Tracker, String)> {
+        let tracker = tracker::for_id_in(dir);
+        let chosen = self
+            .chosen_ticket(tab)
+            .and_then(|t| t.tracked().map(|(t, id)| (t, id.to_string())));
         let names = || {
             let t = self.tabs.get(&tab)?;
             t.opts
@@ -544,8 +566,9 @@ impl Server {
                 .or_else(|| ticket::id_in_name(&self.tab_label_without_pr_title(tab)))
         };
         ticket::id_for_dir(dir)
-            .or_else(|| self.chosen_ticket(tab).and_then(linear))
-            .or_else(names)
+            .map(|id| (tracker, id))
+            .or(chosen)
+            .or_else(|| names().map(|id| (tracker, id)))
     }
 
     /// Whether M-i has a ticket to open whose service is on, as
@@ -568,7 +591,7 @@ impl Server {
         if branch.and_then(ticket::issue_number_of_branch).is_some() && settings::is_on("github") {
             return true;
         }
-        settings::is_on("linear")
+        (settings::is_on("linear") || settings::is_on("jira"))
             && (branch.and_then(ticket::linear_in_branch).is_some()
                 || t.opts
                     .get("@tab_name")
@@ -700,6 +723,7 @@ impl Server {
             client,
             move || match (ask, dir) {
                 (true, Some(dir)) if issues => util::block_on(ticket::open_issues_at(&dir)),
+                (true, _) if service == "jira" => util::block_on(ticket::yours_in_jira()),
                 (true, _) if !issues => util::block_on(ticket::yours()),
                 _ => Ok(ticket::Lists::default()),
             },
@@ -1010,7 +1034,8 @@ impl Server {
     }
 
     /// M-l: the tab's ticket in the browser: its GitHub issue at once, its
-    /// Linear ticket or project where Linear says it is.
+    /// Linear ticket or project where Linear says it is, its Jira ticket on
+    /// its site.
     fn open_ticket(&mut self, client: ClientId) {
         let Some((pane, tab, dir)) = self.here(client) else {
             return;
@@ -1059,7 +1084,8 @@ impl Server {
             return;
         }
         match found {
-            Ticket::Linear(id) => self.open_ticket_id(client, id),
+            Ticket::Linear(id) => self.open_ticket_id(client, Tracker::Linear, id),
+            Ticket::Jira(id) => self.open_ticket_id(client, Tracker::Jira, id),
             Ticket::Issue { .. } => {
                 if let Some(url) = found.url() {
                     self.open_link(client, url);
@@ -1082,20 +1108,24 @@ impl Server {
         }
     }
 
-    /// A Linear ticket by its ID in the browser: at the workspace's link
-    /// when one is written down, else where Linear says it is (M-l, and
-    /// M-p's "Open a Linear ticket in the browser by ID").
-    pub(crate) fn open_ticket_id(&mut self, client: ClientId, id: String) {
-        if let Some(workspace) = linear_workspace() {
-            self.open_link(client, format!("https://linear.app/{workspace}/issue/{id}"));
+    /// A ticket by its ID in the browser: at its link made without asking
+    /// (`ticket_link`), else where the tracker says it is (M-l, and M-p's
+    /// "Open a ticket in the browser by ID").
+    pub(crate) fn open_ticket_id(&mut self, client: ClientId, tracker: Tracker, id: String) {
+        if let Some(link) = ticket_link(tracker, &id) {
+            self.open_link(client, link);
             return;
         }
-        // No workspace written down: Linear says where the ticket is.
+        // No link to make: the tracker says where the ticket is.
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match linear::ticket(&id, "M-l open ticket").await {
+            match tracker::ticket(tracker, &id, "M-l open ticket").await {
                 Ok(Some(t)) if !t.url.is_empty() => Server::open_link_later(&tx, client, t.url),
-                Ok(_) => Server::say_later(&tx, client, format!("Linear has no ticket {id}.")),
+                Ok(_) => Server::say_later(
+                    &tx,
+                    client,
+                    format!("{} has no ticket {id}.", tracker.name()),
+                ),
                 Err(e) => Server::say_later(&tx, client, format!("Can't open {id}.\n\n{e}")),
             }
         });
@@ -1111,13 +1141,14 @@ impl Server {
     /// M-p's "Copy the branch's ticket ID" and, with `url`, its link: the
     /// tab's ticket as M-i finds it, a GitHub issue as `#12` and its link,
     /// a Linear ticket's link at the workspace written down, else where
-    /// Linear says the ticket is.
+    /// Linear says the ticket is, a Jira one's on its site.
     fn copy_ticket(&mut self, client: ClientId, url: bool) {
         let Some((_, tab, dir)) = self.here(client) else {
             return;
         };
-        let id = match self.tab_ticket_at(tab, &dir) {
-            Some(Ticket::Linear(id)) => id,
+        let (tracker, id) = match self.tab_ticket_at(tab, &dir) {
+            Some(Ticket::Linear(id)) => (Tracker::Linear, id),
+            Some(Ticket::Jira(id)) => (Tracker::Jira, id),
             Some(issue @ Ticket::Issue { .. }) => {
                 let text = match issue.url() {
                     Some(link) if url => link,
@@ -1126,10 +1157,10 @@ impl Server {
                 self.copy_said(client, &text);
                 return;
             }
-            // A project, or none of the provider's: the Linear ticket the
-            // branch or the tab's names give, as before there were issues.
+            // A project, or none of the provider's: the ticket the branch
+            // or the tab's names give, as before there were issues.
             _ => match self.ticket_here(tab, &dir) {
-                Some(id) => id,
+                Some(found) => found,
                 None => {
                     self.say(Some(client), "No ticket in this branch or tab name");
                     return;
@@ -1140,16 +1171,13 @@ impl Server {
             self.copy_said(client, &id);
             return;
         }
-        if let Some(workspace) = linear_workspace() {
-            self.copy_said(
-                client,
-                &format!("https://linear.app/{workspace}/issue/{id}"),
-            );
+        if let Some(link) = ticket_link(tracker, &id) {
+            self.copy_said(client, &link);
             return;
         }
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let said = match linear::ticket(&id, "copy the ticket's URL").await {
+            let said = match tracker::ticket(tracker, &id, "copy the ticket's URL").await {
                 Ok(Some(t)) if !t.url.is_empty() => {
                     let _ = tx.send(Event::Views(ViewsEvent::Copy {
                         client,
@@ -1157,7 +1185,7 @@ impl Server {
                     }));
                     return;
                 }
-                Ok(_) => format!("Linear has no ticket {id}."),
+                Ok(_) => format!("{} has no ticket {id}.", tracker.name()),
                 Err(e) => format!("Can't copy {id}'s URL.\n\n{e}"),
             };
             Server::say_later(&tx, client, said);
@@ -1224,29 +1252,36 @@ impl Server {
         let Some((_, tab, dir)) = self.here(client) else {
             return;
         };
-        let Some(id) = self.ticket_here(tab, &dir) else {
+        let Some((tracker, id)) = self.ticket_here(tab, &dir) else {
             self.say(
                 Some(client),
-                "No Linear ticket in this branch or tab name, so there's no project to open.",
+                "No ticket in this branch or tab name, so there's no project to open.",
             );
             return;
         };
+        if !tracker.is_on() {
+            self.service_off(client, tracker.key());
+            return;
+        }
         self.say(
             Some(client),
-            &format!("Looking up the Linear project for {id}..."),
+            &format!("Looking up the project for {id} in {}...", tracker.name()),
         );
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let said = match linear::project_url(&id, "open the ticket's project").await {
+            let said = match tracker::project_url(tracker, &id, "open the ticket's project").await {
                 Ok(Some(url)) => {
                     Server::open_link_later(&tx, client, url);
                     return;
                 }
-                Ok(None) => format!("{id} isn't in a Linear project."),
+                Ok(None) => format!("{id} isn't in a project."),
                 Err(e) if net::kind_of(&e) == Some(&ErrorKind::NotFound) => {
-                    format!("Linear has no ticket {id}, so there's no project to open.")
+                    format!(
+                        "{} has no ticket {id}, so there's no project to open.",
+                        tracker.name()
+                    )
                 }
-                Err(e) => format!("Can't look up the Linear project for {id}.\n\n{e}"),
+                Err(e) => format!("Can't look up the project for {id}.\n\n{e}"),
             };
             Server::say_later(&tx, client, said);
         });

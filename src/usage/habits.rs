@@ -232,7 +232,8 @@ pub fn forget(state: &Path) {
 }
 
 /// A mission control view that has a setting of its own, by its title; the
-/// service it needs; and whether turning it off also stops what it looks up
+/// service it needs (`a|b` for any of several, as Tickets takes Linear or
+/// Jira); and whether turning it off also stops what it looks up
 /// in the background (the Calendar's feed and Slack's look don't wait on
 /// their views).
 #[derive(Clone, Copy, Debug)]
@@ -249,6 +250,14 @@ const fn view(title: &'static str, key: &'static str) -> View {
         key,
         needs: None,
         lookups: false,
+    }
+}
+
+impl View {
+    /// Whether the service it needs is on, by `on`: any one of them, where
+    /// `needs` names several.
+    pub fn needs_met(&self, on: impl Fn(&str) -> bool) -> bool {
+        self.needs.is_none_or(|n| n.split('|').any(on))
     }
 }
 
@@ -281,7 +290,7 @@ pub const VIEWS: &[View] = &[
         needs: Some("autopilot"),
         lookups: false,
     },
-    service_view("Tickets", "ticket_board", "linear"),
+    service_view("Tickets", "ticket_board", "linear|jira"),
     service_view("Inbox", "view_inbox", "linear"),
     view("Resources", "view_resources"),
     view("Usage", "usage"),
@@ -428,7 +437,7 @@ fn off(value: &dyn Fn(&str) -> Option<Value>, key: &str) -> bool {
 
 /// Whether a view is on, and its service with it.
 pub fn view_on(v: &View, value: &dyn Fn(&str) -> Option<Value>) -> bool {
-    !off(value, v.key) && v.needs.is_none_or(|n| !off(value, n))
+    !off(value, v.key) && v.needs_met(|n| !off(value, n))
 }
 
 /// A description without its `#tags`.

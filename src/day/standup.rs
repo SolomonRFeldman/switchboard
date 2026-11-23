@@ -15,7 +15,7 @@
 //! there is never written over, so it is yours to edit once written. Off the
 //! server's task, tried again every `STANDUP_RETRY_MS` while it fails. Only
 //! while the standup_note setting is on; GitHub's part only with github on,
-//! Linear's only with linear on. GitHub is asked over its API with your
+//! the tracker's only with the tracker on. GitHub is asked over its API with your
 //! token (`integrations::github`), where the JavaScript ran `gh`.
 
 use std::path::{Path, PathBuf};
@@ -26,7 +26,8 @@ use jiff::{Timestamp, Zoned};
 use serde_json::{Value, json};
 
 use super::{Ask, AskOpts, Dirs, new_notes, write_new};
-use crate::integrations::{github, linear};
+use crate::integrations::github;
+use crate::integrations::tracker::{self, Tracker};
 use crate::{net, util};
 
 pub const STANDUP_HOUR: i8 = 6;
@@ -69,11 +70,6 @@ const GITHUB: &str = "query($mine: String!, $reviewed: String!, $waiting: String
   reviewed: search(query: $reviewed, type: ISSUE, first: 50) { nodes { ... on PullRequest { number title url repository { nameWithOwner }
     reviews(last: 30) { nodes { author { login } submittedAt } } } } }
   waiting: search(query: $waiting, type: ISSUE, first: 20) { nodes { ... on PullRequest { number title url repository { nameWithOwner } } } } }";
-
-const LINEAR: &str = "query($since: DateTimeOrDuration!) {
-  changed: issues(first: 100, filter: { or: [{ assignee: { isMe: { eq: true } } }, { creator: { isMe: { eq: true } } }], updatedAt: { gte: $since } }) { nodes { identifier title url
-    history(first: 50) { nodes { createdAt fromState { name } toState { name } } } } }
-  started: issues(first: 50, filter: { assignee: { isMe: { eq: true } }, state: { type: { eq: \"started\" } } }) { nodes { identifier title url state { name } } } }";
 
 /// The commits you made in one repository on the last working day.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -365,12 +361,37 @@ pub async fn commits_of(dirs: &[PathBuf], now: &Zoned) -> Vec<Commits> {
     out
 }
 
-/// Which parts to ask for: the github, linear and standup_summary settings.
+/// Which parts to ask for: the github, linear, jira and standup_summary
+/// settings.
 #[derive(Clone, Copy, Debug)]
 pub struct Parts {
     pub github: bool,
     pub linear: bool,
+    pub jira: bool,
     pub summary: bool,
+}
+
+/// Two trackers' standup answers as one: each list's nodes, the first's
+/// before the second's.
+fn merged(first: Option<Value>, second: Value) -> Value {
+    let Some(mut out) = first else {
+        return second;
+    };
+    for list in ["changed", "started"] {
+        let more = second
+            .pointer(&format!("/{list}/nodes"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        match out
+            .pointer_mut(&format!("/{list}/nodes"))
+            .and_then(Value::as_array_mut)
+        {
+            Some(nodes) => nodes.extend(more),
+            None => out[list] = serde_json::json!({ "nodes": more }),
+        }
+    }
+    out
 }
 
 /// Fetches and writes today's note; gives what to log, `Err` when a source
@@ -400,13 +421,21 @@ pub async fn write_standup(
                 })?,
         );
     }
-    if parts.linear {
-        let vars = json!({ "since": super::ical::iso(midnight(since, now)) });
-        match linear::graphql(LINEAR, vars, "standup note").await {
-            Ok(data) => fetched.linear = Some(data),
-            // No key: the note is written without Linear, as before.
+    // Each tracker on, Linear's tickets first, in one answer of Linear's
+    // shape.
+    let since_day = super::ical::iso(midnight(since, now));
+    for (on, asked) in [(parts.linear, Tracker::Linear), (parts.jira, Tracker::Jira)] {
+        if !on {
+            continue;
+        }
+        match tracker::standup(asked, &since_day, "standup note").await {
+            Ok(data) => fetched.linear = Some(merged(fetched.linear.take(), data)),
+            // No key: the note is written without that tracker, as before.
             Err(e) if matches!(net::kind_of(&e), Some(net::ErrorKind::NoCredentials)) => {}
-            Err(e) => anyhow::bail!("Linear couldn't be read ({e}); trying again later"),
+            Err(e) => anyhow::bail!(
+                "{} couldn't be read ({e}); trying again later",
+                asked.name()
+            ),
         }
     }
     let file = standup_file(&dirs.notes, now);

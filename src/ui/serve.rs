@@ -1245,17 +1245,14 @@ impl Server {
     ) {
         let (front, socket) = front.unzip();
         let all = settings::read_settings();
-        let on = |key: &str| {
-            all.iter()
-                .find(|s| s.key == key)
-                .is_none_or(|s| s.value != serde_json::Value::Bool(false))
-        };
+        let on = |key: &str| all.iter().find(|s| s.key == key).is_none_or(|s| s.is_on());
         let learn = on("palette_learn");
         // The diff's commands only where they can act (src/diff).
         let mut entries = palette::entries(
             &self.bindings,
             on("github"),
             on("linear"),
+            on("jira"),
             &self.plugin_views(),
         );
         palette::for_this_build(&mut entries, crate::dev::build_is_from_clone());

@@ -184,6 +184,7 @@ fn the_standups_summary_is_asked_for_a_day_with_work_and_the_note_is_written_wit
     let parts = standup::Parts {
         github: false,
         linear: false,
+        jira: false,
         summary: true,
     };
 

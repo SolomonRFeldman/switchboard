@@ -17,7 +17,7 @@ allowed-tools:
 
 This is Switchboard's own copy, for repositories that have none. Before anything else, run `switchboard skill-path wt`: if it prints a path other than this file's, read that file and follow it instead, with the same arguments, and stop reading here.
 
-Hand this tab over to `wt` for one piece of work: a Linear ticket, a GitHub issue, or a checklist item of a note. This session ends, and in its place `wt` (`switchboard worktree-from-ticket`) makes the work's worktree (a ticket's branch, `issue/<number>-<slug>` for an issue, `note/<slug>` for an item), moves the pane's shell into it, and starts a new Claude session there, told the work (an item with its plan) and, for an issue or an item, to land it with `/queue-and-clean` when done, as `switchboard landing` says for the repository: straight on the default branch, or through a PR. Because the pane itself now runs from the worktree, the workspace sees that directory: splits, new tabs, the tab name, and its header all follow it, which a `cd` from inside this session could never do.
+Hand this tab over to `wt` for one piece of work: a Linear or Jira ticket, a GitHub issue, or a checklist item of a note. This session ends, and in its place `wt` (`switchboard worktree-from-ticket`) makes the work's worktree (a ticket's branch, `issue/<number>-<slug>` for an issue, `note/<slug>` for an item), moves the pane's shell into it, and starts a new Claude session there, told the work (an item with its plan) and, for an issue or an item, to land it with `/queue-and-clean` when done, as `switchboard landing` says for the repository: straight on the default branch, or through a PR. Because the pane itself now runs from the worktree, the workspace sees that directory: splits, new tabs, the tab name, and its header all follow it, which a `cd` from inside this session could never do.
 
 The conversation does not carry over. The work is the hand-off, and the new session starts by reading it.
 
@@ -25,19 +25,19 @@ The conversation does not carry over. The work is the hand-off, and the new sess
 
 1. **The work.** Split the arguments. The first word decides what they name:
 
-   - **A Linear ticket**, its ID (`ABC-123`) or a Linear URL (take the ID from its `/issue/<ID>/` part): the ticket; everything after it is the text to add.
+   - **A Linear or Jira ticket**, its ID (`ABC-123`), a Linear URL (take the ID from its `/issue/<ID>/` part) or a Jira one (from its `/browse/<ID>` part or a board's `?selectedIssue=<ID>`), or `jira:ABC-123`: the ticket; everything after it is the text to add. An ID alone is the repository's tracker's (`wt` asks Jira where repos.json's `tickets` is `jira`, else Linear); a ticket a link or `jira:` names as another tracker's than the repository's is handed over as `jira:<ID>` or `linear:<ID>`.
    - **A GitHub issue**, `#12` or an issue's URL (`https://github.com/<owner>/<repo>/issues/12`): the issue; everything after it is the text to add.
    - **A note's item**, the note (its title or path) and then the item (a few of its words, or its line number in the note): go to "A note's item" below.
    - **Anything else, or nothing**: all of it is the text to add, and the work is found in this order, without asking for an ID:
-     1. A ticket or issue this session created or saved (through Linear or `gh`). If it saved more than one, the most recent.
+     1. A ticket or issue this session created or saved (through Linear, Jira or `gh`). If it saved more than one, the most recent.
      2. The one ticket ID (`ABC-123`) or issue (`#12`) the conversation centered on, or the one checklist item of a note it worked on, which is "A note's item" below with the note and the item already named.
      3. The current branch, from the first line of `git status --porcelain --branch` (`## <branch>`, then `...<upstream>` if it has one; a detached HEAD has no branch), when it starts with a ticket ID such as `abc-123-…` (uppercase it) or is `issue/<number>-…` (the issue `#<number>`).
 
      If the answer is a guess between several (more than one saved, or a conversation about two or three), name the most likely one and ask the user to confirm it before going on. When none of the three gives anything, ask which work outright.
 
-   A branch to land on is written `→ <branch>` after the work, or `--target <branch>` anywhere: the worktree is cut from it and `/queue-and-clean` lands it there, as autopilot's target does. It takes an item or an issue, not a Linear ticket. With none, it lands on the default branch.
+   A branch to land on is written `→ <branch>` after the work, or `--target <branch>` anywhere: the worktree is cut from it and `/queue-and-clean` lands it there, as autopilot's target does. It takes an item or an issue, not a Linear or Jira ticket. With none, it lands on the default branch.
 
-   Check the work's shape: a ticket ID `ABC-123`, an issue's number (digits), an item's line number (digits). Anything else: say so and stop. It is placed into a shell command below, so nothing else may go in.
+   Check the work's shape: a ticket ID `ABC-123` (or `jira:ABC-123`, `linear:ABC-123`), an issue's number (digits), an item's line number (digits). Anything else: say so and stop. It is placed into a shell command below, so nothing else may go in.
 
 2. **A note's item** (only for one).
    - **The note.** Settle it as `~/.local/share/switchboard/claude/plugin/skills/note-watch/pick-note.md` says (read it and follow it), a note named in the arguments counting as already named. Its step 5 marks the tab with the note.

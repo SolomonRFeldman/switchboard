@@ -8,6 +8,7 @@ allowed-tools:
   - Bash(gh pr view*)
   - Bash(gh pr diff*)
   - Bash(gh run list*)
+  - Bash(switchboard tracker *)
 ---
 
 # Walkthrough
