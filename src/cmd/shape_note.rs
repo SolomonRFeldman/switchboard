@@ -34,10 +34,11 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::cmd::{shape_batch, work, worktree_from_note};
+use crate::integrations::tracker;
 use crate::mux::TabId;
 use crate::mux::server::{ClientId, Server};
 use crate::ui::{PickItem, Picker};
-use crate::{paths, settings, util, worktree};
+use crate::{paths, util, worktree};
 
 /// One item of a note, as the list shows it and as /shape is handed it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -194,7 +195,7 @@ fn notes_offered(notes: &Path) -> Vec<String> {
 }
 
 /// The tab command that runs `shape` with one item, as shape-batch makes it,
-/// filed in `source` (`linear`, `github` or `notes`) whatever the
+/// filed in `source` (`linear`, `jira`, `github` or `notes`) whatever the
 /// repository keeps its work in.
 fn shape_tab(item: &str, source: &str) -> Vec<String> {
     let script = format!("{} --{source} \"$@\"", worktree::self_command("shape"));
@@ -203,9 +204,10 @@ fn shape_tab(item: &str, source: &str) -> Vec<String> {
 
 impl Server {
     /// M-p's "Shape a note's checklist items" (`typed` false) and "Shape a
-    /// new Linear ticket" (`typed` true).
+    /// new ticket" (`typed` true), each in the tracker of the repository
+    /// picked (`shape_in_repo`), so only while one is on.
     pub fn shape_note(&mut self, client: ClientId, typed: bool) {
-        if !settings::is_on("linear") {
+        if tracker::on().is_empty() {
             self.service_off(client, "linear");
             return;
         }
@@ -442,13 +444,20 @@ impl Server {
                     );
                     return;
                 };
+                // Filed in the repository's tracker, Linear for one whose
+                // tickets are kept in neither, as before Jira.
+                let filed = tracker::for_id_in(&repo);
+                if !filed.is_on() {
+                    server.service_off(client, filed.key());
+                    return;
+                }
                 let Some(session) = server.clients.get(&client).map(|c| c.session.clone())
                 else {
                     return;
                 };
                 let mut opened: Vec<TabId> = Vec::new();
                 for item in &items {
-                    match server.new_tab(&session, Some(repo.clone()), Some(shape_tab(item, "linear")), None, crate::mux::server::Opened::Background)
+                    match server.new_tab(&session, Some(repo.clone()), Some(shape_tab(item, filed.key())), None, crate::mux::server::Opened::Background)
                     {
                         Ok((tab, _)) => {
                             server.tab_to_end(tab);

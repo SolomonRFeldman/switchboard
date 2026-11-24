@@ -1,8 +1,8 @@
 //! The standup draft: each weekday morning, once the server runs after
 //! `STANDUP_HOUR`, a note, `Standups/Standup <date>.md`, written from the
 //! last working day: the pull requests you merged, opened or worked on and
-//! the ones you reviewed (one GitHub search), the Linear tickets assigned to
-//! you or made by you that changed state (a ticket closed by a merge often
+//! the ones you reviewed (one GitHub search), the Linear and Jira tickets
+//! assigned to you or made by you that changed state (a ticket closed by a merge often
 //! has no assignee), and the commits you made in the repositories your tabs
 //! are in (git, each main clone's branches, a squash merge left to its PR);
 //! then what is in progress today and the reviews asked of you in the last
@@ -15,7 +15,10 @@
 //! there is never written over, so it is yours to edit once written. Off the
 //! server's task, tried again every `STANDUP_RETRY_MS` while it fails. Only
 //! while the standup_note setting is on; GitHub's part only with github on,
-//! the tracker's only with the tracker on. GitHub is asked over its API with your
+//! each tracker's only with that tracker on. A tracker that can't be read
+//! holds the note back to be tried again, as GitHub does, rather than
+//! writing a day without its tickets once and for all; one with no key
+//! stored is left out. GitHub is asked over its API with your
 //! token (`integrations::github`), where the JavaScript ran `gh`.
 
 use std::path::{Path, PathBuf};
@@ -78,12 +81,13 @@ pub struct Commits {
     pub subjects: Vec<String>,
 }
 
-/// What the note is made from: GitHub's and Linear's answers (their
-/// `data`), each `None` when not asked, and the commits.
+/// What the note is made from: GitHub's answer and the ticket trackers'
+/// (their `data`, Linear's and Jira's merged in Linear's shape), each
+/// `None` when not asked, and the commits.
 #[derive(Clone, Debug, Default)]
 pub struct Fetched {
     pub github: Option<Value>,
-    pub linear: Option<Value>,
+    pub tickets: Option<Value>,
     pub commits: Vec<Commits>,
 }
 
@@ -207,7 +211,7 @@ pub fn standup_from(data: &Fetched, now: &Zoned, summary: &str) -> String {
             .map(|p| format!("Reviewed {}", pr(p))),
     );
     // A ticket's moves that day, from where it started to where it ended.
-    for t in nodes(data.linear.as_ref(), "changed") {
+    for t in nodes(data.tickets.as_ref(), "changed") {
         let mut moves: Vec<&Value> = nodes(Some(t), "history")
             .into_iter()
             .filter(|h| {
@@ -238,7 +242,7 @@ pub fn standup_from(data: &Fetched, now: &Zoned, summary: &str) -> String {
             }
         ));
     }
-    let mut today: Vec<String> = nodes(data.linear.as_ref(), "started")
+    let mut today: Vec<String> = nodes(data.tickets.as_ref(), "started")
         .into_iter()
         .map(|t| format!("{} ({})", ticket(t), s(t, &["state", "name"])))
         .collect();
@@ -429,7 +433,7 @@ pub async fn write_standup(
             continue;
         }
         match tracker::standup(asked, &since_day, "standup note").await {
-            Ok(data) => fetched.linear = Some(merged(fetched.linear.take(), data)),
+            Ok(data) => fetched.tickets = Some(merged(fetched.tickets.take(), data)),
             // No key: the note is written without that tracker, as before.
             Err(e) if matches!(net::kind_of(&e), Some(net::ErrorKind::NoCredentials)) => {}
             Err(e) => anyhow::bail!(
@@ -510,7 +514,7 @@ mod tests {
                 ] },
                 "waiting": { "nodes": [{ "number": 7, "title": "Asked of me", "url": "https://github.com/o/repo/pull/7", "repository": repository }] },
             })),
-            linear: Some(json!({
+            tickets: Some(json!({
                 "changed": { "nodes": [
                     { "identifier": "AB-1", "title": "Moved", "url": "https://linear.app/x/issue/AB-1", "history": { "nodes": [
                         { "createdAt": friday(16), "fromState": { "name": "In Review" }, "toState": { "name": "Done" } },

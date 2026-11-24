@@ -1248,13 +1248,7 @@ impl Server {
         let on = |key: &str| all.iter().find(|s| s.key == key).is_none_or(|s| s.is_on());
         let learn = on("palette_learn");
         // The diff's commands only where they can act (src/diff).
-        let mut entries = palette::entries(
-            &self.bindings,
-            on("github"),
-            on("linear"),
-            on("jira"),
-            &self.plugin_views(),
-        );
+        let mut entries = palette::entries(&self.bindings, on, &self.plugin_views());
         palette::for_this_build(&mut entries, crate::dev::build_is_from_clone());
         let listed = self.diff_palette(client);
         entries.retain(|e| listed(&e.action));

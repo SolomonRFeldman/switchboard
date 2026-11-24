@@ -118,7 +118,7 @@ pub enum Do {
     CloseTicket {
         ticket: String,
         title: String,
-        tracker: Option<String>,
+        tracker: Option<Tracker>,
     },
     /// An Inbox notification marked read in Linear.
     MarkRead(String),
@@ -972,11 +972,8 @@ pub fn board_choices(item: &Item, ctx: &Ctx<'_>) -> Vec<Choice> {
     // card's work and shaping name Jira (`jira:<ID>`), so neither asks
     // Linear for a ticket of the same identifier.
     let here = !crate::sources::tickets::from_another_tracker(&item.data);
-    let from = crate::sources::tickets::tracker_of(&item.data);
-    let arg = match from {
-        Tracker::Jira => crate::worktree::ticket_arg(Some(from), &ticket),
-        Tracker::Linear => ticket.clone(),
-    };
+    let from = crate::integrations::tracker::of_card(&item.data);
+    let arg = crate::views::ticket::Ticket::of(from, ticket.clone()).arg();
     if crate::worktree::TICKET_ID.is_match(&ticket) {
         if let Some(t) = tab_naming(ctx.tabs, &ticket) {
             out.push(choice(
@@ -1020,11 +1017,7 @@ pub fn board_choices(item: &Item, ctx: &Ctx<'_>) -> Vec<Choice> {
                 Do::CloseTicket {
                     ticket: ticket.clone(),
                     title: item.title.clone(),
-                    tracker: item
-                        .data
-                        .get("tracker")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
+                    tracker: crate::integrations::tracker::named_by(&item.data),
                 },
             ));
         }
@@ -1993,10 +1986,10 @@ pub fn led_to_words(
         Do::MarkRead(_) => return None,
         // Asked for: it asks first, and may be told no.
         Do::SlackReminderDone { .. } => "you chose to mark it complete in Slack".into(),
-        Do::CloseTicket { tracker, .. } => match tracker.as_deref() {
-            Some("jira") => "you chose to close it in Jira".into(),
-            _ => "you chose to close it in Linear".into(),
-        },
+        Do::CloseTicket { tracker, .. } => format!(
+            "you chose to close it in {}",
+            tracker.unwrap_or(Tracker::Linear).name()
+        ),
         Do::Rsvp(_, answer) => match answer {
             crate::day::calendar::Rsvp::Yes => "you chose yes".into(),
             crate::day::calendar::Rsvp::Maybe => "you chose maybe".into(),

@@ -503,10 +503,12 @@ impl Action {
             Action::ReviewPr => "Review a contributor's PR in a new tab (/review-pr)".into(),
             Action::WorkOnNote => "Start work on a note's checklist items in new tabs (wt)".into(),
             Action::WorkOnIssue => "Start work on a GitHub issue in a new tab (wt --issue)".into(),
-            Action::ContinueShaping => "Continue shaping Linear tickets, each in a new tab".into(),
-            Action::ShapeNote => "Shape a note's checklist items as Linear tickets".into(),
+            Action::ContinueShaping => {
+                "Continue shaping Linear or Jira tickets, each in a new tab".into()
+            }
+            Action::ShapeNote => "Shape a note's checklist items as Linear or Jira tickets".into(),
             Action::ShapeNewTicket => {
-                "Shape a new ticket from what you type, in a new tab".into()
+                "Shape a new Linear or Jira ticket from what you type, in a new tab".into()
             }
             Action::PrImage => {
                 "View the branch's PR description as an image, as GitHub draws it, in place of this pane".into()
@@ -680,7 +682,7 @@ impl Action {
                 "Picks a note, its items and a repository, then opens a background tab running /shape for each item. The items go to Claude only once you choose them.".into()
             }
             Action::ShapeNewTicket => {
-                "The idea typed goes to a background tab running /shape in the repository you pick.".into()
+                "The idea typed goes to a background tab running /shape in the repository you pick, filed in its tracker, Linear or Jira.".into()
             }
             Action::PrImage => {
                 "Chrome draws its HTML with GitHub's stylesheet and Mermaid diagrams, shown a page at a time; j, k and Space page, q closes it.".into()
@@ -800,9 +802,9 @@ impl Action {
             Action::ReviewPr => &["github", "pr", "review"],
             Action::WorkOnNote => &["notes", "worktree", "new"],
             Action::WorkOnIssue => &["github", "issue", "worktree", "new"],
-            Action::ContinueShaping => &["linear", "ticket", "shape"],
-            Action::ShapeNote => &["notes", "linear", "shape"],
-            Action::ShapeNewTicket => &["linear", "ticket", "shape"],
+            Action::ContinueShaping => &["linear", "jira", "ticket", "shape"],
+            Action::ShapeNote => &["notes", "linear", "jira", "shape"],
+            Action::ShapeNewTicket => &["linear", "jira", "ticket", "shape"],
             Action::PrImage => &["github", "pr", "panes"],
             Action::TicketImage => &["linear", "jira", "ticket", "panes"],
             Action::MissionControl => &["sidebar", "overview", "tabs"],

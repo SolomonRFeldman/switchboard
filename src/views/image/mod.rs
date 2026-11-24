@@ -91,15 +91,10 @@ impl Asked {
 /// else the directory (where it runs, by default).
 pub fn asked(args: &[String]) -> Result<Asked, String> {
     match args {
-        [flag, id] if flag == "--ticket" => {
-            let (tracker, id) = match id.strip_prefix("jira:") {
-                Some(id) => (Tracker::Jira, id),
-                None => (Tracker::Linear, id.as_str()),
-            };
-            crate::views::ticket::id_of(id)
-                .map(|id| Asked::Ticket(tracker, id))
-                .ok_or_else(|| "That isn't a ticket ID.".to_string())
-        }
+        [flag, id] if flag == "--ticket" => crate::views::ticket::Ticket::parse(id)
+            .and_then(crate::views::ticket::Ticket::into_tracked)
+            .map(|(tracker, id)| Asked::Ticket(tracker, id))
+            .ok_or_else(|| "That isn't a ticket ID.".to_string()),
         [flag] if flag == "--ticket" => Err("Which ticket? pr-image --ticket <ID>".into()),
         [] => Ok(Asked::Pr(
             std::env::current_dir().unwrap_or_else(|_| paths::home()),
@@ -114,8 +109,7 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
 /// checkout's git directory and branch, each `/` a `%`.
 fn cache_file(asked: &Asked) -> Option<PathBuf> {
     let key = match asked {
-        Asked::Ticket(Tracker::Jira, id) => format!("jira:{id}"),
-        Asked::Ticket(Tracker::Linear, id) => id.clone(),
+        Asked::Ticket(tracker, id) => crate::views::ticket::Ticket::of(*tracker, id.clone()).arg(),
         Asked::Pr(dir) => {
             let place = crate::tabs::git::locate(dir)?;
             format!("{}:{}", place.git_dir.display(), place.branch)
@@ -712,11 +706,10 @@ impl Server {
                 self.service_off(client, tracker.key());
                 return;
             }
-            let arg = match tracker {
-                Tracker::Jira => format!("jira:{id}"),
-                Tracker::Linear => id,
-            };
-            command.extend(["--ticket".into(), arg]);
+            command.extend([
+                "--ticket".into(),
+                crate::views::ticket::Ticket::of(tracker, id).arg(),
+            ]);
         } else {
             command.push(dir.to_string_lossy().into_owned());
         }

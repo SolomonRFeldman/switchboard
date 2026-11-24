@@ -46,16 +46,6 @@ pub fn place(tracker: Tracker) -> &'static str {
     }
 }
 
-/// The tracker a ticket read for the view came from, as `fetch` marks it
-/// (`tracker`), Linear for a copy from before it was marked.
-pub fn tracker_of(issue: &Value) -> Tracker {
-    issue
-        .get("tracker")
-        .and_then(Value::as_str)
-        .and_then(Tracker::of)
-        .unwrap_or(Tracker::Linear)
-}
-
 static ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-[0-9]+$").unwrap());
 static IN_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Z][A-Z0-9]*-[0-9]+").unwrap());
@@ -82,8 +72,11 @@ static ISSUE_IN_TEXT: LazyLock<Regex> = LazyLock::new(|| {
 static ISSUE_BRANCH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^issue/([0-9]+)(?:-|$)").unwrap());
 static TICKET_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(^|[^(<])<?(https://(?:linear\.app/[^/\s]+/issue/|[\w.-]+\.atlassian\.net(?:/browse/|(?:/[^\s)>?&]*)?[?&](?:[^\s)>]*&)?selectedIssue=))([A-Z][A-Z0-9]*-\d+)[^\s)>]*)>?")
-        .unwrap()
+    Regex::new(&format!(
+        r"(^|[^(<])<?({}[^\s)>]*)>?",
+        tracker::link_pattern()
+    ))
+    .unwrap()
 });
 
 /// A ticket's identifier, in capitals, when `text` is one (`eng-42`).
@@ -222,8 +215,13 @@ impl Ticket {
         if let Some(id) = text.strip_prefix("project:").filter(|id| !id.is_empty()) {
             return Some(Ticket::Project(id.to_string()));
         }
-        if let Some(id) = text.strip_prefix("jira:") {
-            return id_of(id).map(Ticket::Jira);
+        // A ticket of a tracker named before it (`jira:AB-12`, `linear:AB-12`),
+        // as `worktree::ticket_arg` writes one whose tracker a link gave.
+        if let Some((tracker, id)) = text
+            .split_once(':')
+            .and_then(|(t, id)| Some((Tracker::of(t)?, id)))
+        {
+            return id_of(id).map(|id| Ticket::of(tracker, id));
         }
         if PROJECT_ID.is_match(text) {
             return Some(Ticket::Project(text.to_ascii_uppercase()));
@@ -264,6 +262,15 @@ impl Ticket {
     /// The tracker and identifier of a ticket one keeps, Linear's or
     /// Jira's: not a project or a GitHub issue.
     pub fn tracked(&self) -> Option<(Tracker, &str)> {
+        match self {
+            Ticket::Linear(id) => Some((Tracker::Linear, id)),
+            Ticket::Jira(id) => Some((Tracker::Jira, id)),
+            _ => None,
+        }
+    }
+
+    /// `tracked`, owned.
+    pub fn into_tracked(self) -> Option<(Tracker, String)> {
         match self {
             Ticket::Linear(id) => Some((Tracker::Linear, id)),
             Ticket::Jira(id) => Some((Tracker::Jira, id)),
@@ -443,8 +450,9 @@ pub fn issues_in(text: &str) -> Vec<Ticket> {
     out
 }
 
-/// A bare link to a Linear ticket as a link named by its identifier, which
-/// then reads as the identifier, clickable (pr-view.js's `tidy`).
+/// A bare link to a ticket, Linear's or Jira's (`tracker::link_pattern`), as
+/// a link named by its identifier, which then reads as the identifier,
+/// clickable (pr-view.js's `tidy`).
 pub fn tidy(text: &str) -> String {
     TICKET_URL
         .replace_all(text, "${1}[${3}](${2})")
@@ -723,12 +731,12 @@ pub fn board(issue: &Value, now: jiff::Timestamp) -> Board {
     Board {
         main,
         panel,
-        place: place(tracker_of(issue)).into(),
+        place: place(tracker::of_card(issue)).into(),
         keys: [
             ("j/k", "scroll".to_string()),
             ("/", "search".to_string()),
             ("r", "read again".to_string()),
-            ("M-l", format!("in {}", tracker_of(issue).name())),
+            ("M-l", format!("in {}", tracker::of_card(issue).name())),
             ("M-v", "its PR".to_string()),
             ("M-c", "back to Claude".to_string()),
         ]
@@ -744,7 +752,7 @@ fn content(issue: &Value) -> Content {
     Content::Board(board(issue, jiff::Timestamp::now()))
 }
 
-/// The ticket from its tracker, marked with it (`tracker_of`), or why it
+/// The ticket from its tracker, marked with it (`tracker::mark`), or why it
 /// couldn't be read.
 pub async fn fetch(tracker: Tracker, id: &str) -> Result<Value, String> {
     let name = tracker.name();
@@ -752,7 +760,7 @@ pub async fn fetch(tracker: Tracker, id: &str) -> Result<Value, String> {
         .await
         .map_err(|e| format!("Couldn't read {id} from {name}: {e}"))?
         .ok_or_else(|| format!("{name} has no ticket {id}."))?;
-    issue["tracker"] = Value::from(tracker.key());
+    tracker::mark(&mut issue, tracker);
     Ok(issue)
 }
 
@@ -911,10 +919,7 @@ pub async fn open_issues_at(dir: &Path) -> Result<Lists, String> {
 /// picker that chooses the tab's ticket in a repository whose `tickets` is
 /// `jira`. Asks Jira, so off the server's task.
 pub async fn yours_in_jira() -> Result<Lists, String> {
-    const SOURCE: &str = "choose a tab's ticket";
-    // Finished since now: none, so the open ones alone.
-    let now = jiff::Timestamp::now().to_string();
-    let found = tracker::assigned(Tracker::Jira, &now, SOURCE)
+    let found = tracker::open_assigned(Tracker::Jira, "choose a tab's ticket")
         .await
         .map_err(|e| e.to_string())?;
     Ok(Lists {
@@ -923,13 +928,18 @@ pub async fn yours_in_jira() -> Result<Lists, String> {
     })
 }
 
-/// `yours_in_jira`'s rows, in Jira's order.
-pub fn jira_rows(found: &[Value]) -> Vec<Yours> {
-    let text = |v: &Value, path: &str| name_at(v, path).unwrap_or_default();
+/// `yours_in_jira`'s rows, in Jira's order, without control characters,
+/// since someone else wrote the titles.
+fn jira_rows(found: &[Value]) -> Vec<Yours> {
+    let text = |v: &Value, path: &str| -> String {
+        name_at(v, path)
+            .unwrap_or_default()
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect()
+    };
     found
         .iter()
-        .filter(|t| t.get("completedAt").is_none_or(Value::is_null))
-        .filter(|t| t.get("canceledAt").is_none_or(Value::is_null))
         .filter_map(|t| {
             let id = name_at(t, "/identifier")?;
             Some(Yours {

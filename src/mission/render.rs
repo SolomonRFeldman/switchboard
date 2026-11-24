@@ -192,20 +192,17 @@ pub fn unlinked(text: &str) -> String {
 }
 
 fn short_url(url: &str) -> String {
-    // A Linear ticket's link, or a Jira one's on an Atlassian site.
+    // A ticket's link, Linear's or Jira's.
     static TICKET: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"linear\.app/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)|\.atlassian\.net(?:/\S*?)?(?:/browse/|[?&]selectedIssue=)([A-Za-z][A-Za-z0-9]*-\d+)").expect("a regex")
+        Regex::new(&crate::integrations::tracker::link_pattern()).expect("a regex")
     });
     static PR: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"github\.com/[^/]+/[^/]+/(?:pull|issues)/(\d+)").expect("a regex")
     });
     static HOST: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^https?://(?:www\.)?([^/?#]+)").expect("a regex"));
-    if let Some(id) = TICKET
-        .captures(url)
-        .and_then(|m| m.get(1).or_else(|| m.get(2)))
-    {
-        return id.as_str().to_uppercase();
+    if let Some(m) = TICKET.captures(url) {
+        return m[1].to_uppercase();
     }
     if let Some(m) = PR.captures(url) {
         return format!("#{}", &m[1]);
@@ -2514,7 +2511,7 @@ pub fn item_beside(m: &Mission) -> Option<(&Item, &'static str, &'static str)> {
         ViewId::Tickets => {
             let tracker = m
                 .chosen_item()
-                .map(|i| crate::sources::tickets::tracker_of(&i.data))
+                .map(|i| crate::integrations::tracker::of_card(&i.data))
                 .unwrap_or(crate::integrations::tracker::Tracker::Linear);
             ("description", crate::views::ticket::place(tracker), 0)
         }
@@ -2713,7 +2710,7 @@ fn ticket_about(item: &Item, side_w: usize, theme: &Theme, images: Option<&Image
     with_description(
         head,
         d["description"].as_str().unwrap_or(""),
-        crate::views::ticket::place(crate::sources::tickets::tracker_of(d)),
+        crate::views::ticket::place(crate::integrations::tracker::of_card(d)),
         inner,
         theme,
         images,
@@ -6244,7 +6241,9 @@ mod tests {
             ),
             "AB-8"
         );
-        assert_eq!(short_url("https://example.com/browse/AB-7"), "example.com");
+        // A Jira site on a host of its own is told by its link's path.
+        assert_eq!(short_url("https://jira.acme.test/browse/AB-9"), "AB-9");
+        assert_eq!(short_url("https://example.com/a-page"), "example.com");
     }
     use crate::items::ViewData;
     use crate::mission::Snapshot;

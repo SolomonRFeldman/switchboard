@@ -473,7 +473,7 @@ pub fn pr_parts(pr: &Value) -> Parts {
     }
 }
 
-/// The ticket's fields the page shows, as pr-image.js asked for them.
+/// The text at `path`, when there and not empty.
 fn name(v: &Value, path: &str) -> Option<String> {
     v.pointer(path)
         .and_then(Value::as_str)

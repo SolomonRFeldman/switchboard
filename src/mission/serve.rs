@@ -5139,14 +5139,11 @@ impl Server {
                 // Which state it would move to, from the tracker, then asked
                 // about on the server, since it changes the tracker for
                 // everyone; never in a tracker the card didn't come from.
-                if crate::sources::tickets::moved(tracker.as_deref()) {
+                if tracker.is_some_and(|t| !t.is_on()) {
                     self.say(Some(client), &moved_message(&ticket));
                     return;
                 }
-                let from = tracker
-                    .as_deref()
-                    .and_then(Tracker::of)
-                    .unwrap_or(Tracker::Linear);
+                let from = tracker.unwrap_or(Tracker::Linear);
                 self.mission_busy_with(client, label, async move {
                     match crate::sources::tickets::done_state_of(from, &ticket).await {
                         Err(e) => (
@@ -5910,14 +5907,11 @@ impl Server {
                         if !yes {
                             return;
                         }
-                        if crate::sources::tickets::moved(tracker.as_deref()) {
+                        if tracker.is_some_and(|t| !t.is_on()) {
                             server.say(Some(client), &moved_message(&ticket));
                             return;
                         }
-                        let from = tracker
-                            .as_deref()
-                            .and_then(Tracker::of)
-                            .unwrap_or(Tracker::Linear);
+                        let from = tracker.unwrap_or(Tracker::Linear);
                         server.mission_busy_with(client, "Working on it", async move {
                             match crate::sources::tickets::close_ticket(from, &issue, &state).await
                             {

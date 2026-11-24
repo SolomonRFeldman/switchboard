@@ -1733,7 +1733,7 @@ pub enum After {
         issue: String,
         state: String,
         name: String,
-        tracker: Option<String>,
+        tracker: Option<crate::integrations::tracker::Tracker>,
     },
 }
 

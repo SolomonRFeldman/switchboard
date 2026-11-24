@@ -58,7 +58,7 @@ use std::process::ExitCode;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::cmd::worktree_from_note::{self as note, failed_in_autopilot};
 use crate::integrations::github;
@@ -530,10 +530,7 @@ fn by_provider(
             tracked_ticket(rest, Tracker::Linear, &format!("{team}-{n}"), trusted)
         }
         Some("jira") => {
-            let project = util::read_json(crate::files::file("jira.json"))
-                .and_then(|v| Some(v.get("jiraProject")?.as_str()?.trim().to_string()))
-                .filter(|t| !t.is_empty())
-                .ok_or_else(|| {
+            let project = crate::integrations::jira::project().ok_or_else(|| {
                     format!(
                         "{name} keeps its work in Jira, and a number alone needs its project: set jiraProject in {}, or give the ticket's key (ABC-{n})",
                         crate::files::shown("jira.json")
@@ -695,73 +692,26 @@ fn picked(rest: &Given, root: &Path, trusted: bool, made: &mut bool) -> Result<E
     }
 }
 
-const ASSIGNED: &str = "query { viewer { assignedIssues(first: 100, orderBy: createdAt, \
-     filter: { state: { type: { nin: [\"completed\", \"canceled\", \"duplicate\"] } } }) { \
-     nodes { identifier title createdAt state { type } } } } }";
-
-/// The open tickets assigned to you in `tracker`, newest first (Jira's
-/// the latest updated first): their IDs and titles, the titles without
-/// control characters, since someone else wrote them.
+/// The open tickets assigned to you in `tracker` (`tracker::open_assigned`,
+/// in its order): their IDs and titles, the titles without control
+/// characters, since someone else wrote them.
 pub async fn assigned_tickets(
     tracker: Tracker,
     source: &str,
 ) -> anyhow::Result<Vec<(String, String)>> {
-    match tracker {
-        Tracker::Linear => {
-            let data = crate::integrations::linear::graphql(ASSIGNED, json!({}), source).await?;
-            Ok(assigned_of(&data))
-        }
-        Tracker::Jira => {
-            // Finished since now: none, so the open ones alone.
-            let now = jiff::Timestamp::now().to_string();
-            let found = tracker::assigned(Tracker::Jira, &now, source).await?;
-            Ok(open_of(&found))
-        }
-    }
+    Ok(ids_and_titles(
+        &tracker::open_assigned(tracker, source).await?,
+    ))
 }
 
-/// `assigned_tickets` from Jira's open and finished tickets, in Linear's
-/// shape: the open ones, in their order.
-fn open_of(found: &[Value]) -> Vec<(String, String)> {
+fn ids_and_titles(found: &[Value]) -> Vec<(String, String)> {
     found
         .iter()
-        .filter(|n| {
-            let kind = n.pointer("/state/type").and_then(Value::as_str);
-            !matches!(kind, Some("completed" | "canceled" | "duplicate"))
-        })
         .filter_map(|n| {
             let text = |k: &str| n.get(k).and_then(Value::as_str).map(str::to_string);
             let title: String = text("title")?.chars().filter(|c| !c.is_control()).collect();
             Some((text("identifier")?, title))
         })
-        .collect()
-}
-
-/// `assigned_tickets` from Linear's answer.
-fn assigned_of(data: &Value) -> Vec<(String, String)> {
-    let mut tickets: Vec<(String, String, String)> = data
-        .pointer("/viewer/assignedIssues/nodes")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|n| {
-            let kind = n.pointer("/state/type").and_then(Value::as_str);
-            !matches!(kind, Some("completed" | "canceled" | "duplicate"))
-        })
-        .filter_map(|n| {
-            let text = |k: &str| n.get(k).and_then(Value::as_str).map(str::to_string);
-            let title: String = text("title")?.chars().filter(|c| !c.is_control()).collect();
-            Some((
-                text("createdAt").unwrap_or_default(),
-                text("identifier")?,
-                title,
-            ))
-        })
-        .collect();
-    tickets.sort_by(|a, b| b.0.cmp(&a.0));
-    tickets
-        .into_iter()
-        .map(|(_, id, title)| (id, title))
         .collect()
 }
 
@@ -924,9 +874,7 @@ fn tracked_ticket(
             tracker.name()
         ));
     }
-    if crate::integrations::tracker::foreign_link(ticket) {
-        return Err(crate::integrations::tracker::foreign_link_says(ticket));
-    }
+    crate::integrations::tracker::refuse_foreign(ticket)?;
     let extra = worktree::one_line(&given.all("--prompt").join(" "));
     let target = given
         .positional
@@ -1017,6 +965,7 @@ fn tracked_ticket(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn work_asked_by_its_number_an_issues_number_or_link_or_a_linear_ticket() {
@@ -1036,14 +985,14 @@ mod tests {
     }
 
     #[test]
-    fn your_open_tickets_newest_first_without_closed_ones_or_control_characters() {
-        let data = json!({ "viewer": { "assignedIssues": { "nodes": [
-            { "identifier": "ENG-1", "title": "Old", "createdAt": "2026-01-01T00:00:00Z", "state": { "type": "started" } },
-            { "identifier": "ENG-2", "title": "New\u{1b}[2J", "createdAt": "2026-02-01T00:00:00Z", "state": { "type": "unstarted" } },
-            { "identifier": "ENG-3", "title": "Done", "createdAt": "2026-03-01T00:00:00Z", "state": { "type": "completed" } },
-        ] } } });
+    fn your_open_tickets_without_control_characters_in_their_titles() {
+        let found = [
+            json!({ "identifier": "ENG-2", "title": "New\u{1b}[2J" }),
+            json!({ "identifier": "ENG-1", "title": "Old" }),
+            json!({ "title": "No ID" }),
+        ];
         assert_eq!(
-            assigned_of(&data),
+            ids_and_titles(&found),
             vec![
                 ("ENG-2".to_string(), "New[2J".to_string()),
                 ("ENG-1".to_string(), "Old".to_string())

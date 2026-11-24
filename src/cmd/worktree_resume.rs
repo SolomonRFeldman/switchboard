@@ -143,8 +143,8 @@ pub fn main(args: Vec<String>) -> ExitCode {
     }
     // A ticket link on neither tracker's site isn't read as a branch.
     let input = &given.positional[0];
-    if crate::integrations::tracker::foreign_link(input) {
-        return worktree::fail(&crate::integrations::tracker::foreign_link_says(input));
+    if let Err(e) = crate::integrations::tracker::refuse_foreign(input) {
+        return worktree::fail(&e);
     }
     let target = parse_target(input);
     let root = match worktree::repo_root() {

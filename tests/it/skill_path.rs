@@ -393,7 +393,7 @@ fn shape_files_where_the_repository_keeps_its_work_and_only_you_start_it() {
     }
     let source = section(text, "Where it goes");
     for rule in [
-        "`--notes`, `--github` or `--linear`",
+        "`--notes`, `--github`, `--linear` or `--jira`",
         "run `switchboard tickets`",
         "ask nothing about it",
         "`autopilot-label <label>`",
@@ -474,7 +474,7 @@ fn shape_hands_what_it_files_to_the_review_loop_s_ticket_mode() {
         review.contains("read `references/ticket-mode.md` beside this file and follow it"),
         "the review loop reads it when given `ticket`"
     );
-    let linear = section(shape, "Linear");
+    let linear = section(shape, "Linear or Jira");
     assert!(linear.contains("run `/review-loop ticket <ID>` on it"));
     assert!(linear.contains("Run `/review-loop ticket <ID>`, the review loop's ticket mode"));
     let github = section(shape, "GitHub issues");

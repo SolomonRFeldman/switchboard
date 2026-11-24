@@ -101,18 +101,21 @@ pub fn main(args: Vec<String>) -> ExitCode {
     }
     // A link on neither tracker's site names another ticket by its ID, so none
     // opens a tab.
-    if let Some(link) = items
+    if let Err(e) = items
         .iter()
-        .find(|i| crate::integrations::tracker::foreign_link(i))
+        .try_for_each(|i| crate::integrations::tracker::refuse_foreign(i))
     {
-        return fail(&crate::integrations::tracker::foreign_link_says(link));
+        return fail(&e);
     }
     let cwd = std::env::current_dir()
         .map(|d| d.to_string_lossy().into_owned())
         .unwrap_or_else(|_| ".".into());
+    // Shaped in the repository's tracker, a bare ID being its ticket.
+    let filed = crate::integrations::tracker::for_id_in(std::path::Path::new(&cwd));
     let script = format!(
-        "{} --linear{} \"$@\"",
+        "{} --{}{} \"$@\"",
         worktree::self_command("shape"),
+        filed.key(),
         if carry_on { " --continue" } else { "" }
     );
     for item in items {

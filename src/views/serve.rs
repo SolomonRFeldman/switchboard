@@ -169,7 +169,7 @@ impl Server {
             Command::Search => self.search_everything(client, ""),
             Command::SearchTabs => self.search_everything(client, Source::Tabs.prefix()),
             Command::SearchNotes => self.search_everything(client, Source::Notes.prefix()),
-            Command::SearchLinear => self.search_everything(client, Source::Linear.prefix()),
+            Command::SearchTickets => self.search_everything(client, Source::Tickets.prefix()),
             Command::SearchGitHub => self.search_everything(client, Source::GitHub.prefix()),
             Command::SearchSlack => self.search_everything(client, Source::Slack.prefix()),
             Command::ReadLink => self.ask_link(client),
@@ -1492,9 +1492,9 @@ impl Server {
                     let dir = page::notes_dir();
                     tokio::task::spawn_blocking(move || send(search::notes(&dir, &q)));
                 }
-                Source::Linear => {
+                Source::Tickets => {
                     tokio::spawn(
-                        async move { send(search::linear(&q).await.unwrap_or_else(said)) },
+                        async move { send(search::tickets(&q).await.unwrap_or_else(said)) },
                     );
                 }
                 Source::GitHub => {

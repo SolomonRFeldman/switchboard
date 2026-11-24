@@ -132,52 +132,28 @@ pub async fn fetch(now_ms: i64) -> anyhow::Result<Vec<Value>> {
     let since = jiff::Timestamp::from_millisecond(now_ms - DONE_DAYS * 86_400_000)
         .map(|t| t.to_string())
         .unwrap_or_default();
-    let asked = tracker::on();
-    if asked.is_empty() {
+    if tracker::on().is_empty() {
         // As each tracker's own refusal says it: Linear's, as before Jira.
         return tracker::assigned(tracker::Tracker::Linear, &since, "sidebar: tickets").await;
     }
-    let answers = futures_util::future::join_all(
-        asked
-            .iter()
-            .map(|t| tracker::assigned(*t, &since, "sidebar: tickets")),
-    )
-    .await;
-    let mut issues = Vec::new();
-    let mut failed = None;
-    for (from, answer) in asked.into_iter().zip(answers) {
-        match answer {
-            Ok(found) => issues.extend(found.into_iter().map(|mut issue| {
-                issue["tracker"] = json!(from.key());
+    let answers = tracker::each_on(|t| tracker::assigned(t, &since, "sidebar: tickets"))
+        .await
+        .map_err(|mut failed| failed.remove(0).1)?;
+    Ok(answers
+        .into_iter()
+        .flat_map(|(from, found)| {
+            found.into_iter().map(move |mut issue| {
+                tracker::mark(&mut issue, from);
                 issue
-            })),
-            Err(e) => failed = failed.or(Some(e)),
-        }
-    }
-    match failed {
-        Some(e) if issues.is_empty() => Err(e),
-        _ => Ok(issues),
-    }
-}
-
-/// The tracker a card (or issue) came from, by its `tracker`: Linear for
-/// one that names none (read before cards named theirs).
-pub fn tracker_of(data: &Value) -> tracker::Tracker {
-    data.get("tracker")
-        .and_then(Value::as_str)
-        .and_then(tracker::Tracker::of)
-        .unwrap_or(tracker::Tracker::Linear)
+            })
+        })
+        .collect())
 }
 
 /// Whether a card (or issue) came from a tracker that is off now; one that
 /// names none (an Inbox notification's) didn't.
 pub fn from_another_tracker(data: &Value) -> bool {
-    moved(data.get("tracker").and_then(Value::as_str))
-}
-
-/// Whether `from`, the tracker a ticket was read from, is off now.
-pub fn moved(from: Option<&str>) -> bool {
-    from.is_some_and(|t| !tracker::Tracker::of(t).is_some_and(tracker::Tracker::is_on))
+    tracker::named_by(data).is_some_and(|t| !t.is_on())
 }
 
 /// What closing a ticket from its menu takes, as `tracker::done_state_of`

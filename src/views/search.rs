@@ -58,7 +58,8 @@ const SOURCE: &str = "search";
 pub enum Source {
     Tabs,
     Notes,
-    Linear,
+    /// The ticket trackers on, Linear and Jira.
+    Tickets,
     GitHub,
     Slack,
 }
@@ -67,7 +68,7 @@ impl Source {
     pub const ALL: [Source; 5] = [
         Source::Tabs,
         Source::Notes,
-        Source::Linear,
+        Source::Tickets,
         Source::GitHub,
         Source::Slack,
     ];
@@ -77,7 +78,7 @@ impl Source {
         match self {
             Source::Tabs => "Tab",
             Source::Notes => "Note",
-            Source::Linear => tickets_name(),
+            Source::Tickets => tickets_name(),
             Source::GitHub => "GitHub",
             Source::Slack => "Slack",
         }
@@ -99,7 +100,7 @@ impl Source {
             Source::Notes => "note: ",
             // The tracker on's own name, Linear's with both; either names
             // it (`named`).
-            Source::Linear => match tracker::on().as_slice() {
+            Source::Tickets => match tracker::on().as_slice() {
                 [tracker::Tracker::Jira] => "jira: ",
                 _ => "linear: ",
             },
@@ -118,7 +119,7 @@ impl Source {
         match word.to_lowercase().as_str() {
             "tab" | "tabs" => Some(Source::Tabs),
             "note" | "notes" => Some(Source::Notes),
-            "linear" | "jira" | "ticket" | "tickets" => Some(Source::Linear),
+            "linear" | "jira" | "ticket" | "tickets" => Some(Source::Tickets),
             "gh" | "github" => Some(Source::GitHub),
             "slack" => Some(Source::Slack),
             _ => None,
@@ -342,7 +343,7 @@ pub fn available() -> Vec<Source> {
         .into_iter()
         .filter(|s| match s {
             Source::Tabs | Source::Notes => true,
-            Source::Linear => !tracker::on().is_empty(),
+            Source::Tickets => !tracker::on().is_empty(),
             Source::GitHub => settings::is_on("github"),
             Source::Slack => asks_slack(),
         })
@@ -715,26 +716,20 @@ fn tickets_name() -> &'static str {
 
 /// The search of each ticket tracker on, Linear's results first; an error
 /// only when every one asked failed.
-pub async fn linear(query: &str) -> Result<Vec<Found>, String> {
-    let asked = tracker::on();
-    let answers = futures_util::future::join_all(
-        asked
-            .iter()
-            .map(|t| tracker::search(*t, query, LIMIT, SOURCE)),
-    )
-    .await;
-    let mut found = Vec::new();
-    let mut failed = Vec::new();
-    for (tracker, answer) in asked.into_iter().zip(answers) {
-        match answer {
-            Ok(nodes) => found.extend(tracker_found(tracker, &nodes, query)),
-            Err(e) => failed.push(format!("{}: {e}", tracker.name())),
-        }
-    }
-    if found.is_empty() && !failed.is_empty() {
-        return Err(failed.join("\n"));
-    }
-    Ok(found)
+pub async fn tickets(query: &str) -> Result<Vec<Found>, String> {
+    let answers = tracker::each_on(|t| tracker::search(t, query, LIMIT, SOURCE))
+        .await
+        .map_err(|failed| {
+            let said: Vec<String> = failed
+                .iter()
+                .map(|(t, e)| format!("{}: {e}", t.name()))
+                .collect();
+            said.join("\n")
+        })?;
+    Ok(answers
+        .iter()
+        .flat_map(|(t, nodes)| tracker_found(*t, nodes, query))
+        .collect())
 }
 
 /// One tracker's search results as found.
@@ -751,7 +746,7 @@ fn tracker_found(tracker: tracker::Tracker, nodes: &[Value], query: &str) -> Vec
             let title = clean(&format!("{} {}", text("/identifier"), text("/title")));
             let about = format!("{} ticket, {}", tracker.name(), text("/state/name"));
             Found {
-                source: Source::Linear,
+                source: Source::Tickets,
                 context: Context::in_body(&title, &about, &text("/description"), query, &title),
                 text: title,
                 detail: text("/state/name"),
@@ -1075,7 +1070,7 @@ mod tests {
             (vec![Source::GitHub], "x"),
             "a source named twice is asked once"
         );
-        assert_eq!(scope("tabs: linear: y").0, [Source::Tabs, Source::Linear]);
+        assert_eq!(scope("tabs: linear: y").0, [Source::Tabs, Source::Tickets]);
         assert_eq!(
             scope("fix: the build"),
             (Source::ALL.to_vec(), "fix: the build"),
@@ -1106,8 +1101,8 @@ mod tests {
         merge(&mut rows, Source::Notes, vec![row(Source::Notes, "n1")]);
         merge(
             &mut rows,
-            Source::Linear,
-            vec![row(Source::Linear, "g1"), row(Source::Linear, "l1")],
+            Source::Tickets,
+            vec![row(Source::Tickets, "g1"), row(Source::Tickets, "l1")],
         );
         let links: Vec<&str> = rows.iter().map(|r| r.link.as_str()).collect();
         assert_eq!(

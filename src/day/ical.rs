@@ -505,10 +505,13 @@ static CALL: LazyLock<Regex> = LazyLock::new(|| {
 /// At most this many tickets and pull requests are taken from an event.
 pub const MAX_REFS: usize = 4;
 
-// A Linear ticket's link, or a Jira one's on an Atlassian site: its
-// `/browse/<ID>`, or a board's `?selectedIssue=<ID>`.
-static LINEAR_LINK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"https://(?:linear\.app/[\w-]+/issue/|[\w.-]+\.atlassian\.net(?:/[^\s"<>?]*)?(?:/browse/|\?(?:[^\s"<>]*&)?selectedIssue=))([A-Za-z][A-Za-z0-9]*-\d+)[^\s"<>]*"#).unwrap()
+// A ticket's link, Linear's or Jira's (`tracker::link_pattern`), to its end.
+static TICKET_LINK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r#"{}[^\s"<>]*"#,
+        crate::integrations::tracker::link_pattern()
+    ))
+    .unwrap()
 });
 static GITHUB_LINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)").unwrap());
@@ -518,8 +521,8 @@ static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
 static URL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://\S+").unwrap());
 
 /// The tickets and pull requests an event's description or location names,
-/// for the next meeting's notification and the Calendar view's menu: Linear
-/// and GitHub links, each with where it goes, then ticket IDs written bare
+/// for the next meeting's notification and the Calendar view's menu: Linear,
+/// Jira and GitHub links, each with where it goes, then ticket IDs written bare
 /// (ABC-123), which have no link, at most `MAX_REFS`.
 pub fn refs_from(text: &str) -> Vec<Ref> {
     // Links are found in the raw text, an HTML link's address being inside
@@ -533,7 +536,7 @@ pub fn refs_from(text: &str) -> Vec<Ref> {
             refs.push(r);
         }
     };
-    for m in LINEAR_LINK.captures_iter(text) {
+    for m in TICKET_LINK.captures_iter(text) {
         add(Ref {
             id: m[1].to_uppercase(),
             url: Some(m[0].to_string()),

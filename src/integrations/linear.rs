@@ -332,6 +332,23 @@ fn assigned_of(data: &Value) -> Vec<Value> {
         .collect()
 }
 
+const OPEN_ASSIGNED: &str = "query { viewer { assignedIssues(first: 100, orderBy: createdAt, \
+     filter: { state: { type: { nin: [\"completed\", \"canceled\", \"duplicate\"] } } }) { \
+     nodes { identifier title createdAt state { name type } } } } }";
+
+/// The open issues assigned to you, the newest first, for the pickers that
+/// start work or choose a tab's ticket.
+pub async fn open_assigned(source: &str) -> Result<Vec<Value>> {
+    let data = graphql(OPEN_ASSIGNED, json!({}), source).await?;
+    Ok(newest_first(nodes(&data, "/viewer/assignedIssues/nodes")))
+}
+
+fn newest_first(mut found: Vec<Value>) -> Vec<Value> {
+    let created = |n: &Value| n["createdAt"].as_str().unwrap_or("").to_string();
+    found.sort_by_key(|n| std::cmp::Reverse(created(n)));
+    found
+}
+
 const DETAIL: &str = "query($id: String!) { issue(id: $id) { \
     identifier title url description createdAt updatedAt priorityLabel estimate \
     state { name type } assignee { name } creator { id name } project { name } cycle { number name } \
@@ -521,6 +538,19 @@ fn nodes(data: &Value, path: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn your_open_issues_newest_first() {
+        let found = newest_first(vec![
+            json!({ "identifier": "ENG-1", "createdAt": "2026-01-01T00:00:00Z" }),
+            json!({ "identifier": "ENG-2", "createdAt": "2026-02-01T00:00:00Z" }),
+        ]);
+        let ids: Vec<&str> = found
+            .iter()
+            .filter_map(|n| n["identifier"].as_str())
+            .collect();
+        assert_eq!(ids, ["ENG-2", "ENG-1"]);
+    }
 
     #[test]
     fn canceled_tickets_come_apart_from_the_open_ones() {

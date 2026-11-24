@@ -52,6 +52,18 @@ pub struct Shown {
     pub easy: bool,
 }
 
+impl Shown {
+    /// Whether the service `key` (`github`, `linear`, `jira`) is on.
+    fn on(&self, key: &str) -> bool {
+        match key {
+            "github" => self.github,
+            "linear" => self.linear,
+            "jira" => self.jira,
+            _ => true,
+        }
+    }
+}
+
 /// Which part of the list a group is in, which the board's panel puts
 /// under a label each.
 pub const WORKSPACE: &str = "workspace";
@@ -190,7 +202,7 @@ fn shared_keys(bindings: &Bindings, e: &palette::Entry) -> Vec<String> {
 /// first, each group's in the order of what they do; then the commands no
 /// key is bound to, under "Through M-p".
 fn workspace(bindings: &Bindings, shown: Shown, counts: &HashMap<String, u64>) -> Vec<Item> {
-    let mut entries = palette::entries(bindings, shown.github, shown.linear, shown.jira, &[]);
+    let mut entries = palette::entries(bindings, |s| shown.on(s), &[]);
     palette::for_this_build(&mut entries, crate::dev::build_is_from_clone());
     // M-p itself, which the palette leaves out of its own list.
     if let Some((words, tags)) = Action::Palette.palette_note() {

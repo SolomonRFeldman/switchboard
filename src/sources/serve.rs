@@ -1152,7 +1152,8 @@ fn ticket_known<'a>(mut issues: impl Iterator<Item = &'a Value>, arg: &str) -> O
     let ticket = crate::views::ticket::Ticket::parse(arg)?;
     let (from, id) = ticket.tracked()?;
     let issue = issues.find(|i| {
-        i.get("identifier").and_then(Value::as_str) == Some(id) && tickets::tracker_of(i) == from
+        i.get("identifier").and_then(Value::as_str) == Some(id)
+            && crate::integrations::tracker::of_card(i) == from
     })?;
     let said = |at: &str| issue.pointer(at).and_then(Value::as_str).unwrap_or("");
     Some(format!("{} {}", said("/updatedAt"), said("/state/name")))

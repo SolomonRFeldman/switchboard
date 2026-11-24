@@ -801,7 +801,7 @@ pub fn looks_like_ticket(input: &str) -> bool {
 /// The ticket's identifier, from an identifier as written (`abc-123` stays
 /// so) or a link to a ticket on a tracker's site (`tracker::link_ticket`,
 /// in capitals). A link on another site is none, since its ID would name
-/// another ticket (`tracker::foreign_link` says why).
+/// another ticket (`tracker::refuse_foreign` says why).
 pub fn ticket_from(input: &str) -> Option<String> {
     ticket_and_tracker_from(input).map(|(_, id)| id)
 }

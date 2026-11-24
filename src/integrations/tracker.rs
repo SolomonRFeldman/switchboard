@@ -66,6 +66,48 @@ pub fn on() -> Vec<Tracker> {
     ALL.into_iter().filter(|t| t.is_on()).collect()
 }
 
+/// Asks each tracker on at once, with `ask`: each answer with its tracker,
+/// Linear's first, those that failed left out; every failure, with its
+/// tracker, only when every one asked failed (none on is no answer).
+pub async fn each_on<T, F, Fut>(ask: F) -> Result<Vec<(Tracker, T)>, Vec<(Tracker, anyhow::Error)>>
+where
+    F: Fn(Tracker) -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let asked = on();
+    let answers = futures_util::future::join_all(asked.iter().map(|t| ask(*t))).await;
+    let (mut got, mut failed) = (Vec::new(), Vec::new());
+    for (t, answer) in asked.into_iter().zip(answers) {
+        match answer {
+            Ok(found) => got.push((t, found)),
+            Err(e) => failed.push((t, e)),
+        }
+    }
+    if got.is_empty() && !failed.is_empty() {
+        return Err(failed);
+    }
+    Ok(got)
+}
+
+/// The tracker a card or ticket names as the one it was read from (its
+/// `tracker`, as `mark` writes it), Linear for one that names none, read
+/// before cards named theirs.
+pub fn of_card(card: &Value) -> Tracker {
+    named_by(card).unwrap_or(Tracker::Linear)
+}
+
+/// The tracker a card names, if any: an Inbox notification's names none.
+pub fn named_by(card: &Value) -> Option<Tracker> {
+    card.get("tracker")
+        .and_then(Value::as_str)
+        .and_then(Tracker::of)
+}
+
+/// Marks a card or ticket as read from `tracker`, for `of_card`.
+pub fn mark(card: &mut Value, tracker: Tracker) {
+    card["tracker"] = Value::from(tracker.key());
+}
+
 /// The tracker that keeps the tickets of the repository at `dir`, by its
 /// `tickets` read from the files alone (`repos::tickets_known`), when that
 /// is one of the two.
@@ -100,6 +142,15 @@ pub async fn project_url(
     match tracker {
         Tracker::Linear => linear::project_url(identifier, source).await,
         Tracker::Jira => jira::project_url(identifier, source).await,
+    }
+}
+
+/// The open tickets assigned to you, Linear's the newest first and Jira's
+/// the latest updated first, each with its identifier, title and state.
+pub async fn open_assigned(tracker: Tracker, source: &str) -> Result<Vec<Value>> {
+    match tracker {
+        Tracker::Linear => linear::open_assigned(source).await,
+        Tracker::Jira => jira::open_assigned(source).await,
     }
 }
 
@@ -201,16 +252,20 @@ pub fn filing(tracker: Tracker) -> Value {
     out
 }
 
-/// The ticket identifier a branch (or tab) name holds, in capitals.
-pub fn ticket_in(branch: &str) -> Option<String> {
-    linear::ticket_in(branch)
-}
-
 /// A ticket link's identifier, as written: a Linear issue's
 /// (`/issue/ABC-123/...`) or a Jira one's (`/browse/ABC-123`, or a board's
 /// `?selectedIssue=ABC-123`). The pattern holds one group, the identifier,
 /// so a caller can put it inside a longer one.
 pub const LINK_ID: &str = r"(?:/issue/|/browse/|[?&]selectedIssue=)([A-Za-z][A-Za-z0-9]*-[0-9]+)";
+
+/// A ticket's link as written in text, either tracker's on any site:
+/// `https://`, its host, path and query up to `LINK_ID`, whose group, the
+/// identifier, is the pattern's one. For showing a link by its ticket (a
+/// PR's text, a card, a meeting's); which tracker's a link is, and whether
+/// it is a ticket's at all, is `link_ticket`'s to say, by the site.
+pub fn link_pattern() -> String {
+    format!(r#"https://[\w.-]+(?:/[^\s"<>()?]*?)?(?:\?[^\s"<>()]*?)?{LINK_ID}"#)
+}
 
 /// The identifier a ticket link names, in capitals, from either tracker's
 /// link (`LINK_ID`).
@@ -229,14 +284,17 @@ pub fn link_ticket(url: &str) -> Option<(Tracker, String)> {
     link_ticket_of(url, jira::site)
 }
 
-/// Whether `text` is a ticket's link (`LINK_ID`) that neither tracker's
-/// site has (`link_ticket`): its ID would name another ticket, so it is
-/// refused rather than asked about.
-pub fn foreign_link(text: &str) -> bool {
-    text.starts_with("http") && id_in_link(text).is_some() && link_ticket(text).is_none()
+/// Refuses a ticket's link (`LINK_ID`) that neither tracker's site has
+/// (`link_ticket`), since its ID would name another ticket, saying why
+/// (`foreign_link_says`).
+pub fn refuse_foreign(text: &str) -> Result<(), String> {
+    match foreign_link(text) {
+        true => Err(foreign_link_says(text)),
+        false => Ok(()),
+    }
 }
 
-/// What is said of a link `foreign_link` refuses: that Jira isn't set up
+/// What is said of a link `refuse_foreign` refuses: that Jira isn't set up
 /// when it has no site to tell its links by, else that it is neither
 /// tracker's.
 pub fn foreign_link_says(text: &str) -> String {
@@ -244,6 +302,10 @@ pub fn foreign_link_says(text: &str) -> String {
         return format!("{text} isn't a Linear link. {}", jira::SET_UP);
     }
     format!("{text} isn't a link to a ticket in Linear or on your Jira site")
+}
+
+fn foreign_link(text: &str) -> bool {
+    text.starts_with("http") && id_in_link(text).is_some() && link_ticket(text).is_none()
 }
 
 /// `link_ticket` with Jira's site given, asked for only when needed.
@@ -296,6 +358,29 @@ mod tests {
     }
 
     #[test]
+    fn a_ticket_link_in_text_is_found_on_any_site() {
+        let pattern = Regex::new(&link_pattern()).unwrap();
+        let id = |text: &str| pattern.captures(text).map(|m| m[1].to_string());
+        for (text, want) in [
+            ("see https://linear.app/acme/issue/ENG-4/fix-it.", "ENG-4"),
+            ("https://acme.atlassian.net/browse/AB-7", "AB-7"),
+            ("https://jira.acme.test/browse/AB-8", "AB-8"),
+            (
+                "https://acme.atlassian.net/jira/software/projects/AB/boards/1?selectedIssue=AB-9",
+                "AB-9",
+            ),
+            (
+                "https://acme.atlassian.net/issues/?jql=x&selectedIssue=AB-10",
+                "AB-10",
+            ),
+        ] {
+            assert_eq!(id(text).as_deref(), Some(want), "{text}");
+        }
+        assert_eq!(id("https://github.com/acme/widgets/issues/12"), None);
+        assert_eq!(id("AB-7"), None, "an ID alone isn't a link");
+    }
+
+    #[test]
     fn a_link_s_tracker_is_its_site_s() {
         let site = || Some("https://acme.atlassian.net".to_string());
         assert_eq!(
@@ -339,9 +424,11 @@ mod tests {
         assert!(!foreign_link("AB-2"), "an ID is no link");
         assert!(!foreign_link("https://example.com/a-page"));
         assert!(
-            foreign_link_says("https://acme.atlassian.net/browse/AB-2")
+            refuse_foreign("https://acme.atlassian.net/browse/AB-2")
+                .unwrap_err()
                 .contains("Jira isn't set up")
         );
+        assert_eq!(refuse_foreign("AB-2"), Ok(()));
     }
 
     #[test]

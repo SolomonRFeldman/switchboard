@@ -111,9 +111,7 @@ pub fn shown_key(keys: &str) -> String {
 /// (the server's), by the title its plugin gives it now.
 pub fn entries(
     bindings: &Bindings,
-    github: bool,
-    linear: bool,
-    jira: bool,
+    on: impl Fn(&str) -> bool,
     plugins: &[PluginView],
 ) -> Vec<Entry> {
     let mut by_action: Vec<Entry> = Vec::new();
@@ -187,13 +185,13 @@ pub fn entries(
     }));
     // Left out while every service it is tagged with is off, as
     // `integrations::tagged_off` refuses it.
-    let tagged = |tags: &str, tag: &str| tags.split(' ').any(|t| t == tag);
     by_action.retain(|e| {
-        let services = [("#github", github), ("#linear", linear), ("#jira", jira)]
-            .into_iter()
-            .filter(|(tag, _)| tagged(&e.tags, tag));
-        let mut services = services.peekable();
-        services.peek().is_none() || services.any(|(_, on)| on)
+        let tags: Vec<&str> = e
+            .tags
+            .split(' ')
+            .filter_map(|t| t.strip_prefix('#'))
+            .collect();
+        crate::integrations::tagged_off_by(&tags, &on).is_none()
     });
     by_action.sort_by(|a, b| {
         (&a.words, &a.tags)
@@ -441,17 +439,17 @@ mod tests {
         let mut bindings = Bindings::default();
         let read = Action::View(crate::views::Command::ReadLink);
         bindings.apply(&serde_json::json!({"root": {"M-u": null}}));
-        let all = entries(&bindings, true, true, true, &[]);
+        let all = entries(&bindings, |_| true, &[]);
         let entry = all.iter().find(|e| e.action == read).unwrap();
         assert!(entry.keys.is_empty(), "{:?}", entry.keys);
         bindings.apply(&serde_json::json!({"root": {"M-u": "new-tab"}}));
-        let all = entries(&bindings, true, true, true, &[]);
+        let all = entries(&bindings, |_| true, &[]);
         assert!(all.iter().any(|e| e.action == read));
     }
 
     #[test]
     fn no_note_preview_is_listed() {
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         assert!(
             !all.iter().any(|e| e.words.contains("Preview a note")),
             "M-p lists no note preview"
@@ -470,7 +468,7 @@ mod tests {
     #[test]
     fn the_restart_is_listed_only_on_a_build_from_switchboard_s_clone() {
         let restart = |from_clone: bool| {
-            let mut all = entries(&Bindings::default(), true, true, true, &[]);
+            let mut all = entries(&Bindings::default(), |_| true, &[]);
             let before = all.len();
             for_this_build(&mut all, from_clone);
             (
@@ -484,7 +482,7 @@ mod tests {
 
     #[test]
     fn the_restart_is_found_by_its_name_and_by_its_old_one() {
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         let restart = all.iter().find(|e| e.action == Action::Upgrade).unwrap();
         assert_eq!(restart.words, "Restart Switchboard on the latest main");
         let hay = restart.item().haystack().to_lowercase();
@@ -502,7 +500,7 @@ mod tests {
 
     #[test]
     fn the_palette_hides_the_restarts_progress_with_no_key() {
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         let hide = all
             .iter()
             .find(|e| e.action == Action::HideBuildRow)
@@ -512,7 +510,7 @@ mod tests {
 
     #[test]
     fn the_palette_lists_each_command_once_with_its_keys() {
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         assert!(all.iter().all(|e| e.action != Action::Palette));
         let split = all
             .iter()
@@ -541,7 +539,7 @@ mod tests {
 
     #[test]
     fn every_command_previews_more_than_its_words_and_its_key() {
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         for e in &all {
             let detail = e.action.detail();
             assert!(!detail.is_empty(), "{} has no detail", e.action.name());
@@ -568,7 +566,7 @@ mod tests {
             loaded: true,
             data: Default::default(),
         };
-        let all = entries(&Bindings::default(), true, true, true, &[plugin]);
+        let all = entries(&Bindings::default(), |_| true, &[plugin]);
         let mission = |id: ViewId| Action::Extra(crate::extras::Command::Mission(id));
         for id in ViewId::BUILT_IN.into_iter().filter(|v| v.shows()) {
             let entry = all.iter().find(|e| e.action == mission(id.clone()));
@@ -591,7 +589,7 @@ mod tests {
 
     #[test]
     fn recent_picks_lead() {
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         let ordered = recent_first(all, &["zoom".into(), "detach".into()]);
         assert_eq!(ordered[0].action, Action::Zoom);
         assert_eq!(ordered[1].action, Action::Detach);
@@ -663,7 +661,7 @@ mod tests {
             "each command once"
         );
 
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         let names: Vec<String> = all.iter().map(|e| e.action.name()).collect();
         let picked: Vec<String> = names.iter().rev().take(10).cloned().collect();
         let ordered = recent_first(all, &picked);
@@ -682,10 +680,7 @@ mod tests {
 
         let mut with_notes = picked.clone();
         with_notes.insert(1, "notes:Add an item".into());
-        let ordered = recent_first(
-            entries(&Bindings::default(), true, true, true, &[]),
-            &with_notes,
-        );
+        let ordered = recent_first(entries(&Bindings::default(), |_| true, &[]), &with_notes);
         assert_eq!(
             ordered
                 .iter()
@@ -700,7 +695,7 @@ mod tests {
     #[test]
     fn autopilot_on_names_the_note_and_keeps_the_rest() {
         let work_note = Action::Autopilot(crate::autopilot::Command::WorkNote);
-        let all = entries(&Bindings::default(), true, true, true, &[]);
+        let all = entries(&Bindings::default(), |_| true, &[]);
         let before = all.iter().find(|e| e.action == work_note).unwrap();
         assert_eq!(before.words, crate::autopilot::Command::WorkNote.about());
 

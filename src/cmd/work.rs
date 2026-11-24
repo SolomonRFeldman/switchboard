@@ -274,13 +274,9 @@ pub fn parse_tickets(text: &str) -> Result<Vec<String>, String> {
         if token.is_empty() {
             continue;
         }
-        let (tracker, id) = worktree::ticket_and_tracker_from(token).ok_or_else(|| {
-            if tracker::foreign_link(token) {
-                tracker::foreign_link_says(token)
-            } else {
-                format!("Not a ticket ID or ticket link: {token}")
-            }
-        })?;
+        tracker::refuse_foreign(token)?;
+        let (tracker, id) = worktree::ticket_and_tracker_from(token)
+            .ok_or_else(|| format!("Not a ticket ID or ticket link: {token}"))?;
         let ticket = worktree::ticket_arg(tracker, &id.to_uppercase());
         if !tickets.contains(&ticket) {
             tickets.push(ticket);

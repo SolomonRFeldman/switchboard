@@ -139,12 +139,12 @@ pub fn main(args: Vec<String>) -> ExitCode {
         return usage();
     }
     // A link on neither tracker's site names another ticket by its ID.
-    if let Some(link) = rest[0]
+    if let Some(Err(e)) = rest[0]
         .split_whitespace()
         .next()
-        .filter(|w| crate::integrations::tracker::foreign_link(w))
+        .map(crate::integrations::tracker::refuse_foreign)
     {
-        return fail(&crate::integrations::tracker::foreign_link_says(link));
+        return fail(&e);
     }
     let asked = asked(&rest, carry_on, source.as_deref());
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));

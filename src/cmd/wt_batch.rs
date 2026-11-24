@@ -47,14 +47,9 @@ pub fn tickets_of(args: &[String]) -> Result<Vec<String>, String> {
         .flat_map(|a| a.split(|c: char| c.is_whitespace() || c == ','))
         .filter(|t| !t.is_empty())
     {
+        crate::integrations::tracker::refuse_foreign(token)?;
         let ticket = worktree::ticket_from(token)
-            .ok_or_else(|| {
-                if crate::integrations::tracker::foreign_link(token) {
-                    crate::integrations::tracker::foreign_link_says(token)
-                } else {
-                    format!("could not parse a ticket identifier from \"{token}\"")
-                }
-            })?
+            .ok_or_else(|| format!("could not parse a ticket identifier from \"{token}\""))?
             .to_uppercase();
         if !tickets.contains(&ticket) {
             tickets.push(ticket);

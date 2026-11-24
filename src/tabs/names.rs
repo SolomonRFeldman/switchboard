@@ -51,7 +51,7 @@ use super::color::{self, Rgb, Shade, Tint};
 use super::git::{self, GitPlace};
 use super::label;
 use crate::integrations::github::{self, Repo};
-use crate::integrations::tracker::{self, Tracker};
+use crate::integrations::tracker;
 use crate::views::ticket::{self, Ticket};
 use crate::{net, settings};
 
@@ -280,15 +280,14 @@ impl Ask {
                     Some((repo, number)) => {
                         github::issue_title(&repo, number, "tab name: issue title").await
                     }
-                    None => {
-                        let (tracker, key) = match id.strip_prefix("jira:") {
-                            Some(key) => (Tracker::Jira, key),
-                            None => (Tracker::Linear, id.as_str()),
-                        };
-                        tracker::ticket(tracker, key, "tab name: ticket title")
-                            .await
-                            .map(|t| t.map(|t| t.title))
-                    }
+                    None => match Ticket::parse(&id).and_then(Ticket::into_tracked) {
+                        Some((tracker, key)) => {
+                            tracker::ticket(tracker, &key, "tab name: ticket title")
+                                .await
+                                .map(|t| t.map(|t| t.title))
+                        }
+                        None => Ok(None),
+                    },
                 };
                 Answer::Title {
                     id,
@@ -390,22 +389,19 @@ impl Names {
         // The issue the branch was started for (`wt --issue`'s
         // `branch.<branch>.wtnIssue`, else an `issue/<n>-` branch of
         // origin's), its title asked for under its reference
-        // (`<owner>/<repo>#<n>`); else the Linear ticket it names, any team
-        // key: a branch that only looks like a ticket is harmless, Linear
-        // having no such ticket, and the name is used as usual.
+        // (`<owner>/<repo>#<n>`); else the ticket it names, any team key, in
+        // the repository's tracker (`tracker::for_id_in`): a branch that only
+        // looks like a ticket is harmless, the tracker having no such ticket,
+        // and the name is used as usual.
         let ticket = place
             .filter(|p| p.on_branch())
             .map(|p| {
                 ticket::of_dir_all(dir, Some("github"))
                     .into_iter()
-                    // A Jira ticket's in a repository whose tickets are in
-                    // Jira, else Linear's.
-                    .chain(ticket::id_in_branch(&p.branch).map(|id| {
-                        ticket::in_repo(
-                            Ticket::Linear(id),
-                            crate::repos::tickets_known(dir).as_deref(),
-                        )
-                    }))
+                    .chain(
+                        ticket::id_in_branch(&p.branch)
+                            .map(|id| Ticket::of(tracker::for_id_in(dir), id)),
+                    )
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()

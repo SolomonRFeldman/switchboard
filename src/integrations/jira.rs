@@ -231,7 +231,7 @@ async fn request(method: &str, path: &str, body: Option<&Value>, source: &str) -
     let sign_in = sign_in().await?;
     let auth = format!(
         "Basic {}",
-        base64(format!("{}:{}", sign_in.email, sign_in.token.value).as_bytes())
+        util::base64(format!("{}:{}", sign_in.email, sign_in.token.value).as_bytes())
     );
     let headers = [("Authorization", auth.as_str())];
     let audit = Audit {
@@ -318,39 +318,6 @@ async fn or_none(answer: Result<Value>, source: &str) -> Result<Option<Value>> {
         }
         Err(e) => Err(e),
     }
-}
-
-// A path segment as a URL carries it: anything but letters, digits and
-// `-._~` percent-encoded, as encodeURIComponent did.
-fn encoded(segment: &str) -> String {
-    segment
-        .bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
-
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let n = chunk
-            .iter()
-            .enumerate()
-            .fold(0u32, |n, (i, b)| n | u32::from(*b) << (16 - 8 * i));
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char);
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
 }
 
 // ── Linear's shape ──────────────────────────────────────────────────────────
@@ -490,7 +457,10 @@ fn person(user: &Value) -> Value {
 }
 
 fn issue_path(key: &str, rest: &str) -> String {
-    format!("/rest/api/3/issue/{}{rest}", encoded(key))
+    format!(
+        "/rest/api/3/issue/{}{rest}",
+        crate::views::search::encode(key)
+    )
 }
 
 // ── The tracker's questions ─────────────────────────────────────────────────
@@ -662,16 +632,33 @@ pub async fn assigned(since: &str, source: &str) -> Result<Vec<Value>> {
     Ok(open?
         .iter()
         .chain(finished?.iter())
-        .map(|issue| {
-            let mut out = brief(issue);
-            let description = issue.pointer("/fields/description").unwrap_or(&Value::Null);
-            out["description"] = json!(markdown_of(description));
-            out
-        })
+        .map(described)
         .collect())
 }
 
-static KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*-\d+$").unwrap());
+/// The open tickets assigned to you, the latest updated first, in Linear's
+/// shape, for the pickers that start work or choose a tab's ticket.
+pub async fn open_assigned(source: &str) -> Result<Vec<Value>> {
+    Ok(jql(
+        "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC",
+        FIELDS,
+        100,
+        None,
+        source,
+    )
+    .await?
+    .iter()
+    .map(brief)
+    .collect())
+}
+
+/// A ticket in Linear's shape, with its description in Markdown.
+fn described(issue: &Value) -> Value {
+    let mut out = brief(issue);
+    let description = issue.pointer("/fields/description").unwrap_or(&Value::Null);
+    out["description"] = json!(markdown_of(description));
+    out
+}
 
 /// Jira's text search, which reads the summary, description and comments.
 /// Its query language gives meaning to most punctuation, so only words are
@@ -694,13 +681,7 @@ pub async fn search(term: &str, limit: usize, source: &str) -> Result<Vec<Value>
         .join(" ");
     // Each with its description, which search shows around a match.
     let fields = [FIELDS, &["description"]].concat();
-    let described = |issue: &Value| {
-        let mut out = brief(issue);
-        let description = issue.pointer("/fields/description").unwrap_or(&Value::Null);
-        out["description"] = json!(markdown_of(description));
-        out
-    };
-    let by_key = if KEY.is_match(term) {
+    let by_key = if crate::worktree::TICKET_ID.is_match(term) {
         fetch_issue(&term.to_uppercase(), &fields, source)
             .await
             .ok()
@@ -711,10 +692,8 @@ pub async fn search(term: &str, limit: usize, source: &str) -> Result<Vec<Value>
     };
     let mut found: Vec<Value> = by_key.into_iter().collect();
     if !words.is_empty() {
-        let query = format!(
-            "text ~ \"{}\" ORDER BY updated DESC",
-            words.replace('"', "")
-        );
+        // `words` holds no quote, so it can't end the JQL string.
+        let query = format!("text ~ \"{words}\" ORDER BY updated DESC");
         for hit in jql(&query, &fields, limit, None, source).await? {
             let hit = described(&hit);
             if !found.iter().any(|f| f["identifier"] == hit["identifier"]) {
@@ -865,12 +844,7 @@ pub async fn detail(key: &str, source: &str) -> Result<Option<Value>> {
                 .into_iter()
                 .find(|p| !p.is_empty())
                 .unwrap_or("related to");
-            let mut chars = phrase.chars();
-            let phrase: String = chars
-                .next()
-                .map(|c| c.to_uppercase().chain(chars).collect())
-                .unwrap_or_default();
-            json!({ "type": phrase, "relatedIssue": small(other) })
+            json!({ "type": super::adf::capitalized(phrase), "relatedIssue": small(other) })
         })
         .collect();
     let attachments: Vec<Value> = links
@@ -1001,6 +975,12 @@ pub async fn close_ticket(key: &str, transition: &str, source: &str) -> Result<b
     Ok(true)
 }
 
+/// The project jira.json names (`jiraProject`), where new tickets are filed
+/// and whose key a ticket's number alone is given.
+pub fn project() -> Option<String> {
+    config("jiraProject")
+}
+
 /// Where the skills file a new ticket: the site, the project and the labels
 /// from jira.json, never the email or token.
 pub fn filing() -> Value {
@@ -1009,7 +989,7 @@ pub fn filing() -> Value {
         .cloned()
         .filter(Value::is_array)
         .unwrap_or_else(|| json!([]));
-    json!({ "site": site(), "team": config("jiraProject"), "labels": labels })
+    json!({ "site": site(), "team": project(), "labels": labels })
 }
 
 #[cfg(test)]
@@ -1055,15 +1035,6 @@ mod tests {
         assert_eq!(site("ftp://acme.atlassian.net"), None);
         assert_eq!(site("https://acme\\.atlassian.net"), None);
         assert_eq!(site(""), None);
-    }
-
-    #[test]
-    fn base64_as_basic_auth_sends_it() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(b"me@acme.com:secret"), "bWVAYWNtZS5jb206c2VjcmV0");
     }
 
     #[test]

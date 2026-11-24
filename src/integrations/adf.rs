@@ -245,7 +245,7 @@ fn attachment(node: &Value) -> String {
     }
 }
 
-fn capitalized(word: &str) -> String {
+pub fn capitalized(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),

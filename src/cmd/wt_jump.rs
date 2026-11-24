@@ -420,11 +420,11 @@ pub fn main(args: Vec<String>) -> ExitCode {
     };
 
     // A ticket link on neither tracker's site isn't read as words to search for.
-    if let Some(link) = positional
+    if let Some(Err(e)) = positional
         .first()
-        .filter(|t| crate::integrations::tracker::foreign_link(t))
+        .map(|t| crate::integrations::tracker::refuse_foreign(t))
     {
-        return fail(&crate::integrations::tracker::foreign_link_says(link));
+        return fail(&e);
     }
     let described = describe(panes);
     let (matched, label, create, targeted) = match positional.first() {

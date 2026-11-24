@@ -71,15 +71,8 @@ pub fn all() -> Vec<Optional> {
             "Jira (M-i, the Tickets view, ticket titles in tab names)",
             "Jira, for M-i, the Tickets view and ticket titles in tab names: an API token from https://id.atlassian.com/manage-profile/security/api-tokens, stored with switchboard platform secret-set jira-api-token, and \"jiraSite\" and \"jiraEmail\" in ~/.config/switchboard/jira.json (or Settings, jira.json)",
         ));
-        let project = util::read_json(crate::files::file("jira.json"))
-            .and_then(|v| {
-                v.get("jiraProject")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .is_some_and(|t| !t.trim().is_empty());
         all.push(line(
-            project,
+            jira::project().is_some(),
             "the Jira project /shape files tickets in",
             "the Jira project /shape files tickets in: \"jiraProject\": \"<project key>\" in ~/.config/switchboard/jira.json (or Settings, jira.json)",
         ));

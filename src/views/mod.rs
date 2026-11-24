@@ -72,7 +72,6 @@ pub mod ticket;
 
 pub use switchboard_ui::{markdown, mermaid};
 
-use crate::integrations::tracker::Tracker;
 use crate::mux::server::ClientId;
 
 /// What the views do from a key or the palette, an action of the
@@ -102,7 +101,7 @@ pub enum Command {
     /// M-S-f with one source's prefix typed (`search::scope`).
     SearchTabs,
     SearchNotes,
-    SearchLinear,
+    SearchTickets,
     SearchGitHub,
     SearchSlack,
     /// A link, asked for (or chosen from the pane's), read beside the pane.
@@ -152,7 +151,7 @@ impl Command {
         Command::Search,
         Command::SearchTabs,
         Command::SearchNotes,
-        Command::SearchLinear,
+        Command::SearchTickets,
         Command::SearchGitHub,
         Command::SearchSlack,
         Command::ReadLink,
@@ -185,7 +184,7 @@ impl Command {
             Command::Search => "search-everything",
             Command::SearchTabs => "search-tabs",
             Command::SearchNotes => "search-notes",
-            Command::SearchLinear => "search-linear",
+            Command::SearchTickets => "search-linear",
             Command::SearchGitHub => "search-github",
             Command::SearchSlack => "search-slack",
             Command::ReadLink => "read-link",
@@ -229,7 +228,7 @@ impl Command {
             }
             Command::SearchTabs => "Search the open tabs",
             Command::SearchNotes => "Search notes",
-            Command::SearchLinear => "Search tickets",
+            Command::SearchTickets => "Search tickets",
             Command::SearchGitHub => "Search GitHub",
             Command::SearchSlack => "Search Slack",
             Command::ReadLink => {
@@ -293,7 +292,7 @@ impl Command {
             }
             Command::SearchTabs
             | Command::SearchNotes
-            | Command::SearchLinear
+            | Command::SearchTickets
             | Command::SearchGitHub
             | Command::SearchSlack => {
                 "Opens M-F's search with this source's prefix typed (tab:, note:, linear: or jira:, gh:, slack:), so only it is asked. Prefixes can be typed in M-F too, more than one at a time."
@@ -343,8 +342,9 @@ impl Command {
         }
     }
 
-    /// tmux.conf's tags: `#github` and `#tracker` take a command out of the
-    /// palette while that service is off.
+    /// tmux.conf's tags: `#github`, `#linear` and `#jira` take a command
+    /// out of the palette while that service is off (one tagged with both
+    /// trackers only while both are, `integrations::tagged_off`).
     pub fn tags(self) -> &'static [&'static str] {
         match self {
             Command::PrView => &["github", "pr", "panes"],
@@ -358,7 +358,7 @@ impl Command {
             Command::Search => &["search", "find", "notes"],
             Command::SearchTabs => &["search", "find", "tabs"],
             Command::SearchNotes => &["search", "find", "notes"],
-            Command::SearchLinear => &["linear", "jira", "search", "find"],
+            Command::SearchTickets => &["linear", "jira", "search", "find"],
             Command::SearchGitHub => &["github", "search", "find"],
             Command::SearchSlack => &["search", "find", "slack"],
             Command::ReadLink => &["links", "read", "browser"],
@@ -390,7 +390,7 @@ impl Command {
             Command::OpenRepo
             | Command::SearchTabs
             | Command::SearchNotes
-            | Command::SearchLinear
+            | Command::SearchTickets
             | Command::SearchGitHub
             | Command::SearchSlack
             | Command::OpenLinkRead
@@ -554,6 +554,15 @@ pub fn pr_view_main(mut args: Vec<String>) -> ExitCode {
     pr::main(dir_arg(args.first()))
 }
 
+/// The view of a ticket found, or `None` with none.
+fn open_ticket_view(found: Option<ticket::Ticket>) -> Option<ExitCode> {
+    Some(match found? {
+        ticket::Ticket::Issue { repo, number } => issue::main(repo, number),
+        ticket::Ticket::Project(id) => project::main(id),
+        tracked => ticket::main(tracked.into_tracked()),
+    })
+}
+
 /// `switchboard ticket-view [dir|ID|jira:<ID>|project:<id>|owner/repo#n]`,
 /// or `--ticket <ID|jira:<ID>|project:<id>|owner/repo#n>`: a Linear ticket,
 /// a Jira one, a Linear project or a GitHub issue; a directory's ticket as
@@ -564,31 +573,17 @@ pub fn ticket_view_main(args: Vec<String>) -> ExitCode {
     if let [flag, arg] = args.as_slice()
         && flag == "--ticket"
     {
-        return match ticket::Ticket::parse(arg) {
-            Some(ticket::Ticket::Issue { repo, number }) => issue::main(repo, number),
-            Some(ticket::Ticket::Project(id)) => project::main(id),
-            Some(ticket::Ticket::Linear(id)) => ticket::main(Some((Tracker::Linear, id))),
-            Some(ticket::Ticket::Jira(id)) => ticket::main(Some((Tracker::Jira, id))),
-            None => ticket::main(None),
-        };
+        return open_ticket_view(ticket::Ticket::parse(arg)).unwrap_or_else(|| ticket::main(None));
     }
     let arg = args.first().cloned().unwrap_or_default();
     let given = ticket::Ticket::parse(&arg).filter(|_| !std::path::Path::new(&arg).is_dir());
     let dir = dir_arg(args.first());
     let tickets = crate::repos::tickets_known(&dir);
     // A bare ID is the repository's tracker's.
-    let given = match given {
-        Some(ticket::Ticket::Linear(id)) if tickets.as_deref() == Some("jira") => {
-            Some(ticket::Ticket::Jira(id))
-        }
-        other => other,
-    };
+    let given = given.map(|t| ticket::in_repo(t, tickets.as_deref()));
     let found = given.or_else(|| ticket::of_dir(&dir, tickets.as_deref()));
-    match found {
-        Some(ticket::Ticket::Issue { repo, number }) => issue::main(repo, number),
-        Some(ticket::Ticket::Project(id)) => project::main(id),
-        Some(ticket::Ticket::Linear(id)) => ticket::main(Some((Tracker::Linear, id))),
-        Some(ticket::Ticket::Jira(id)) => ticket::main(Some((Tracker::Jira, id))),
+    match open_ticket_view(found) {
+        Some(code) => code,
         None => ticket::none(ticket::none_words(
             &dir,
             match tickets.as_deref() {

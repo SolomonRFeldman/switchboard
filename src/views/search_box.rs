@@ -1557,17 +1557,17 @@ mod tests {
         b.key(key(KeyCode::Enter), &look);
         assert_eq!(
             sent(&mut rx),
-            ["ask zebra [Tabs, Notes, Linear, GitHub]"],
+            ["ask zebra [Tabs, Notes, Tickets, GitHub]"],
             "Slack, off, is sent nothing"
         );
         let id = b.asked.as_ref().unwrap().id;
-        assert!(b.answered(id, Source::Linear, vec![found(Source::Linear, "l1")]));
+        assert!(b.answered(id, Source::Tickets, vec![found(Source::Tickets, "l1")]));
         assert!(!b.answered(id, Source::Slack, vec![found(Source::Slack, "s1")]));
         assert!(
             !b.answered(id + 99, Source::Notes, vec![]),
             "an earlier search"
         );
-        // Tab to Slack's chip (field, All, Tabs, Notes, Linear, GitHub,
+        // Tab to Slack's chip (field, All, Tabs, Notes, Tickets, GitHub,
         // Slack) and Space turns it on.
         for _ in 0..6 {
             b.key(key(KeyCode::Tab), &look);
@@ -1575,15 +1575,15 @@ mod tests {
         assert_eq!(b.focus, Part::Chip(Source::Slack));
         b.key(key(KeyCode::Char(' ')), &look);
         assert_eq!(sent(&mut rx), ["off []", "ask zebra [Slack]"]);
-        // Linear's chip, clicked off, drops its rows and is kept.
-        b.press(Part::Chip(Source::Linear));
+        // The tickets' chip, clicked off, drops its rows and is kept.
+        b.press(Part::Chip(Source::Tickets));
         assert!(b.rows.is_empty());
-        assert_eq!(sent(&mut rx), ["off [Linear]"]);
-        assert!(!b.answered(id, Source::Linear, vec![found(Source::Linear, "l2")]));
+        assert_eq!(sent(&mut rx), ["off [Tickets]"]);
+        assert!(!b.answered(id, Source::Tickets, vec![found(Source::Tickets, "l2")]));
         // All lights every source again.
         b.press(Part::All);
         assert_eq!(b.lit(), Source::ALL);
-        assert_eq!(sent(&mut rx), ["off []", "ask zebra [Linear]"]);
+        assert_eq!(sent(&mut rx), ["off []", "ask zebra [Tickets]"]);
     }
 
     #[test]
@@ -1797,7 +1797,7 @@ mod tests {
         b.press(Part::All);
         assert_eq!(
             sent(&mut rx),
-            ["off []", "ask deploy [Notes, Linear, GitHub, Slack]"]
+            ["off []", "ask deploy [Notes, Tickets, GitHub, Slack]"]
         );
     }
 

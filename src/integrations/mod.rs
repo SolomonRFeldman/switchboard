@@ -45,11 +45,16 @@ pub fn run_by_you() {
 /// in Settings, so one that works with either (M-i, the tab's ticket) is
 /// refused only with both off and decides the rest itself; `None` to run.
 pub fn tagged_off(tags: &[&str]) -> Option<&'static str> {
+    tagged_off_by(tags, settings::is_on)
+}
+
+/// `tagged_off`, with `on` saying whether a service's setting is on.
+pub fn tagged_off_by(tags: &[&str], on: impl Fn(&str) -> bool) -> Option<&'static str> {
     let services: Vec<&'static str> = ["github", "linear", "jira"]
         .into_iter()
         .filter(|s| tags.contains(s))
         .collect();
-    let off = !services.is_empty() && services.iter().all(|s| !settings::is_on(s));
+    let off = !services.is_empty() && services.iter().all(|s| !on(s));
     off.then(|| services[0])
 }
 
