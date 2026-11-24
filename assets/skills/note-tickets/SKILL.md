@@ -19,7 +19,7 @@ allowed-tools:
 
 This is Switchboard's own copy, for repositories that have none. Before anything else, run `switchboard skill-path note-tickets`: if it prints a path other than this file's, read that file and follow it instead, with the same arguments, and stop reading here.
 
-Turn the to-dos in the user's notes (from Switchboard's notes app) into tickets, in Linear or Jira, the tracker the repository keeps its tickets in, without duplicating work the tracker already has. First read `~/.local/share/switchboard/plugin/skills/shape/tracker.md` and settle which tracker, as it says; "the tracker" below means that one. The user starts this on purpose, and it reads only the notes they name: the notes app is built to keep a note's text on the Mac, and running this skill is the user's choice to send some of it to Claude.
+Turn the to-dos in the user's notes (from Switchboard's notes app) into tickets, in Linear or Jira, the tracker the repository keeps its tickets in, without duplicating work the tracker already has. First read `~/.local/share/switchboard/claude/plugin/skills/shape/tracker.md` and settle which tracker, as it says; "the tracker" below means that one. The user starts this on purpose, and it reads only the notes they name: the notes app is built to keep a note's text on the Mac, and running this skill is the user's choice to send some of it to Claude.
 
 Arguments: which notes to read. Any of a folder (`Work`), a note (`Work/Planning.md`, or its title), or a tag (`#todo`), several allowed. With none, list the folders and tags (names only, not contents) and ask which, with `AskUserQuestion`. Never read the whole notes directory by default.
 

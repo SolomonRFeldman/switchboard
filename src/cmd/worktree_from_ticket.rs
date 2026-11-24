@@ -200,7 +200,7 @@ fn fetch_issue(tracker: Tracker, key: &str, number: u64) -> Result<Issue, String
 
 /// Where the skills, and a session `wt` starts on a Jira ticket, read how to
 /// read and edit one: the shape skill's guide, in Switchboard's plugin.
-const TRACKER_GUIDE: &str = "~/.local/share/switchboard/plugin/skills/shape/tracker.md";
+const TRACKER_GUIDE: &str = "~/.local/share/switchboard/claude/plugin/skills/shape/tracker.md";
 
 /// The prompt Claude starts with. The state goes in as a fact rather than
 /// something the session has to look up, keyed on its type, not its name: a
@@ -1083,7 +1083,15 @@ mod tests {
                 .starts_with("Work on ticket ENG-1. Before changing")
         );
         assert!(prompt_for(&open, Tracker::Jira, "").starts_with(
-            "Work on Jira ticket ENG-1, reading and editing it as ~/.local/share/switchboard/plugin/skills/shape/tracker.md says. Before changing"
+            "Work on Jira ticket ENG-1, reading and editing it as ~/.local/share/switchboard/claude/plugin/skills/shape/tracker.md says. Before changing"
         ));
+    }
+
+    #[test]
+    fn the_tracker_guide_is_in_the_plugin_as_setup_writes_it() {
+        assert_eq!(
+            TRACKER_GUIDE,
+            format!("~/{}/skills/shape/tracker.md", crate::paths::PLUGIN)
+        );
     }
 }
